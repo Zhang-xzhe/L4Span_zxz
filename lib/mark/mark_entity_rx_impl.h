@@ -63,25 +63,25 @@ public:
         //   ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data()),
         //   (uint16_t)tcp_hdr->check);
 
-        /* Perform TCP option MARK */
-        if (ip::classify_flow(*ipv4_hdr) == ip::L4S_FLOW && (uint8_t)tcp_hdr->ack) {
-          // For uplink TCP option marking, the decision is made by the downlink 
-          // logger.log_debug("Marking tcp ack header...");
-          perform_tcp_mark((*pdu_it).data(), ipv4_hdr, pkt_five_tuple, tcp_hdr);
-          // logger.log_debug("Finished marking tcp ack header...");
+        // /* Perform TCP option MARK */
+        // if (ip::classify_flow(*ipv4_hdr) == ip::L4S_FLOW && (uint8_t)tcp_hdr->ack) {
+        //   // For uplink TCP option marking, the decision is made by the downlink 
+        //   // logger.log_debug("Marking tcp ack header...");
+        //   perform_tcp_mark((*pdu_it).data(), ipv4_hdr, pkt_five_tuple, tcp_hdr);
+        //   // logger.log_debug("Finished marking tcp ack header...");
           
-        } else if (ip::classify_flow(*ipv4_hdr) == ip::CLASSIC_FLOW && (uint8_t)tcp_hdr->ack){
-          // For uplink TCP option marking, the decision is made by the downlink 
-          perform_tcp_mark((*pdu_it).data(), ipv4_hdr, pkt_five_tuple, tcp_hdr);
-          // perform_ip_mark((*pdu_it).data(), ipv4_hdr, drb_id, pkt_five_tuple);
+        // } else if (ip::classify_flow(*ipv4_hdr) == ip::CLASSIC_FLOW && (uint8_t)tcp_hdr->ack){
+        //   // For uplink TCP option marking, the decision is made by the downlink 
+        //   perform_tcp_mark((*pdu_it).data(), ipv4_hdr, pkt_five_tuple, tcp_hdr);
+        //   // perform_ip_mark((*pdu_it).data(), ipv4_hdr, drb_id, pkt_five_tuple);
 
-        } else if (ip::classify_flow(*ipv4_hdr) == ip::L4S_FLOW && 
-            drb_flow_state[drb_id].have_classic) {
-          // logger.log_debug("L4S flow in hybrid DRB, TBD");
-        } else if (ip::classify_flow(*ipv4_hdr) == ip::CLASSIC_FLOW && 
-            drb_flow_state[drb_id].have_classic) {
-          // logger.log_debug("Classic flow in hybrid DRB, TBD");
-        }
+        // } else if (ip::classify_flow(*ipv4_hdr) == ip::L4S_FLOW && 
+        //     drb_flow_state[drb_id].have_classic) {
+        //   // logger.log_debug("L4S flow in hybrid DRB, TBD");
+        // } else if (ip::classify_flow(*ipv4_hdr) == ip::CLASSIC_FLOW && 
+        //     drb_flow_state[drb_id].have_classic) {
+        //   // logger.log_debug("Classic flow in hybrid DRB, TBD");
+        // }
         
       } else if (ipv4_hdr->protocol == 17) {
         memcpy(udp_hdr, (*pdu_it).data()+sizeof(iphdr), sizeof(udphdr));
