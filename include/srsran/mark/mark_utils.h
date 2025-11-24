@@ -45,6 +45,10 @@ struct drb_flow_state {
   std::chrono::microseconds classic_last_see;
   // uint32_t have_l4s_udp = 0;
   // uint32_t have_classic_udp = 0;
+  double required_dequeue_rate;
+  double predicted_dequeue_rate;
+  double predicted_error;
+  double predicted_qdely;
 };
 
 } // namespace mark_utils

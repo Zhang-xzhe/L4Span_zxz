@@ -637,6 +637,11 @@ private:
     double predicted_error = drb_pdcp_sn_ts[drb_id].back().est_dequeue_rate_error;
     double predicted_qdely = drb_pdcp_sn_ts[drb_id].back().est_queue_delay;
 
+    rx.get()->drb_flow_state[drb_id].predicted_dequeue_rate = predicted_dequeue_rate;
+    rx.get()->drb_flow_state[drb_id].required_dequeue_rate = required_dequeue_rate;
+    rx.get()->drb_flow_state[drb_id].predicted_error = predicted_error;
+    rx.get()->drb_flow_state[drb_id].estimated_queue_delay = predicted_qdely;
+    
     logger.log_debug("required_dequeue_rate {}, predicted_dequeue_rate {}, predicted_error {}, est_dequeue_time {}, queue_size {}", 
       required_dequeue_rate, 
       predicted_dequeue_rate, 

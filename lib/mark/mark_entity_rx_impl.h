@@ -59,6 +59,12 @@ public:
           five_tuple_to_drb[pkt_five_tuple].ack_raw = tcp_hdr->ack_seq - 1;
           // logger.log_debug("Lowest ack_raw {}", tcp_hdr->ack_seq - 1);
         }
+        // Update the minimum RTT
+        Min_RTT = std::min<double>(Min_RTT, drb_flow_state[drb_id].estimated_queue_delay);
+        // Update the maximum throughput
+        Max_troughput = std::max<double>(Max_troughput, drb_flow_state[drb_id].predicted_dequeue_rate);
+        // Update the RWND
+        RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
         // logger.log_debug("Compute TCP checksum {}, actual checksum {}", 
         //   ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data()),
         //   (uint16_t)tcp_hdr->check);
@@ -101,6 +107,11 @@ public:
 private:
   mark_session_trx_logger logger;
   mark_rx_sdu_notifier&   sdu_notifier;
+  double RWND = 100;
+  double gamma = 0.1;
+  double Alpha = 0.5;
+  double Min_RTT = 10;
+  double Max_troughput = 1000;
 
 public:
   void perform_ip_mark(uint8_t* pdu, iphdr* ipv4_hdr, drb_id_t drb_id, ip::five_tuple five_tuple) {    
