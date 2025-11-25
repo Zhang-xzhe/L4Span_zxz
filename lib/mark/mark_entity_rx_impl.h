@@ -45,7 +45,7 @@ public:
       ip::five_tuple pkt_five_tuple;
       iphdr* ipv4_hdr = (iphdr*)malloc(sizeof(iphdr));
       memcpy(ipv4_hdr, (*pdu_it).data(), sizeof(iphdr));
-      drb_id_t drb_id;
+      //drb_id_t drb_id;
       tcphdr* tcp_hdr = (tcphdr*)malloc(sizeof(tcphdr));
       udphdr* udp_hdr = (udphdr*)malloc(sizeof(udphdr));
       ip::swap_iphdr(ipv4_hdr);
@@ -53,7 +53,7 @@ public:
         memcpy(tcp_hdr, (*pdu_it).data()+sizeof(iphdr), sizeof(tcphdr));
         ip::swap_tcphdr(tcp_hdr);        
         pkt_five_tuple = ip::extract_five_tuple_for_ack(*ipv4_hdr, *tcp_hdr);
-        drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
+        //drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
         if (tcp_hdr->ack_seq > 0 && tcp_hdr->ack_seq < five_tuple_to_drb[pkt_five_tuple].ack_raw) {
           // The lowest ACK for ack raw + 1;
           five_tuple_to_drb[pkt_five_tuple].ack_raw = tcp_hdr->ack_seq - 1;
@@ -65,6 +65,12 @@ public:
         Max_troughput = std::max<double>(Max_troughput, drb_flow_state[drb_id].predicted_dequeue_rate);
         // Update the RWND
         RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
+        printf("tcp_hdr window size before %u\n", tcp_hdr->window);
+        tcp_hdr->window = 10;
+        auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
+        tcp_hdr->check = sum;
+        ip::swap_tcphdr(tcp_hdr);
+        memcpy((*pdu_it).data()+sizeof(iphdr), tcp_hdr, sizeof(tcphdr));
         // logger.log_debug("Compute TCP checksum {}, actual checksum {}", 
         //   ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data()),
         //   (uint16_t)tcp_hdr->check);
@@ -93,12 +99,11 @@ public:
         memcpy(udp_hdr, (*pdu_it).data()+sizeof(iphdr), sizeof(udphdr));
         ip::swap_udphdr(udp_hdr);
         pkt_five_tuple = ip::extract_five_tuple_for_ack(*ipv4_hdr, *udp_hdr);
-        drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
+        //drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
       }
-      
       pdu_it ++;
     }
-
+    
     // logger.log_debug("IP packet bytes {}", tmp_string.str());
     // logger.log_info("Finished RX SDU. {} sdu_len={}", qfi_, pdu.length());
     sdu_notifier.on_new_sdu(std::move(pdu), qfi_);
