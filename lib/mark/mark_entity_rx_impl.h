@@ -45,7 +45,7 @@ public:
       ip::five_tuple pkt_five_tuple;
       iphdr* ipv4_hdr = (iphdr*)malloc(sizeof(iphdr));
       memcpy(ipv4_hdr, (*pdu_it).data(), sizeof(iphdr));
-      //drb_id_t drb_id;
+      drb_id_t drb_id;
       tcphdr* tcp_hdr = (tcphdr*)malloc(sizeof(tcphdr));
       udphdr* udp_hdr = (udphdr*)malloc(sizeof(udphdr));
       ip::swap_iphdr(ipv4_hdr);
@@ -53,20 +53,26 @@ public:
         memcpy(tcp_hdr, (*pdu_it).data()+sizeof(iphdr), sizeof(tcphdr));
         ip::swap_tcphdr(tcp_hdr);        
         pkt_five_tuple = ip::extract_five_tuple_for_ack(*ipv4_hdr, *tcp_hdr);
-        //drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
+        drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
         if (tcp_hdr->ack_seq > 0 && tcp_hdr->ack_seq < five_tuple_to_drb[pkt_five_tuple].ack_raw) {
           // The lowest ACK for ack raw + 1;
           five_tuple_to_drb[pkt_five_tuple].ack_raw = tcp_hdr->ack_seq - 1;
           // logger.log_debug("Lowest ack_raw {}", tcp_hdr->ack_seq - 1);
         }
         // Update the minimum RTT
-        Min_RTT = std::min<double>(Min_RTT, drb_flow_state[drb_id].estimated_queue_delay);
+        Min_RTT = std::min<double>(Min_RTT, drb_flow_state[drb_id].predicted_qdely);
         // Update the maximum throughput
         Max_troughput = std::max<double>(Max_troughput, drb_flow_state[drb_id].predicted_dequeue_rate);
         // Update the RWND
-        RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
-        printf("tcp_hdr window size before %u\n", tcp_hdr->window);
-        tcp_hdr->window = 10;
+        RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha*(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
+        if((uint32_t)RWND < 20) {
+          tcp_hdr->window = 20; // Minimum RWND
+          printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+        }
+        else{
+          tcp_hdr->window = (uint32_t)RWND;
+        }
+        printf("tcp_hdr window size %u\n, after %u\n,Min_RTT %u,Max_throughput %u\n", tcp_hdr->window, (uint32_t)RWND, (uint32_t)Min_RTT, (uint32_t)Max_troughput);
         auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
         tcp_hdr->check = sum;
         ip::swap_tcphdr(tcp_hdr);
