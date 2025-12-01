@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <deque>
+#include <vector>
 
 namespace ip {
 
@@ -171,6 +173,63 @@ struct rtt_estimates
   int64_t ingress_of_syn = 0;
   int64_t ingress_of_second = 0;
   int64_t estimated_rtt = 0;
+};
+
+/// TCP packet information for tracking in flight packets
+struct tcp_packet_info {
+  uint32_t seq_num;              ///< TCP sequence number
+  uint32_t end_seq_num;          ///< End sequence number (seq + payload_len)
+  uint16_t payload_len;          ///< Payload length in bytes
+  uint16_t ip_total_len;         ///< Total IP packet length
+  int64_t  tx_timestamp_us;      ///< Transmission timestamp in microseconds
+  uint8_t  ecn_mark;             ///< ECN marking (0=Not-ECT, 1=ECT(1), 2=ECT(0), 3=CE)
+  bool     is_retransmission;    ///< Whether this is a retransmission
+  
+  std::vector<uint8_t> packet_data;  ///< Complete IP packet copy (for deep inspection or retransmission)
+  
+  tcp_packet_info() : 
+    seq_num(0), 
+    end_seq_num(0), 
+    payload_len(0),
+    ip_total_len(0),
+    tx_timestamp_us(0),
+    ecn_mark(0),
+    is_retransmission(false) {}
+    
+  tcp_packet_info(uint32_t seq, uint16_t len, uint16_t ip_len, int64_t ts, uint8_t ecn) :
+    seq_num(seq),
+    end_seq_num(seq + len),
+    payload_len(len),
+    ip_total_len(ip_len),
+    tx_timestamp_us(ts),
+    ecn_mark(ecn),
+    is_retransmission(false) {}
+};
+
+/// Per-flow TCP tracking state
+struct tcp_flow_tracking {
+  std::deque<tcp_packet_info> in_flight_packets;  ///< Queue of unacknowledged packets
+  uint32_t last_ack_received = 0;                 ///< Last ACK number received
+  uint32_t next_expected_seq = 0;                 ///< Next expected sequence number for TX
+  size_t   total_packets_sent = 0;                ///< Total packets transmitted
+  size_t   total_packets_acked = 0;               ///< Total packets acknowledged
+  size_t   total_retransmissions = 0;             ///< Total retransmissions
+  int64_t  last_tx_timestamp_us = 0;              ///< Last transmission timestamp
+  int64_t  last_ack_timestamp_us = 0;             ///< Last ACK timestamp
+  
+  /// Calculate average RTT from recent ACKs
+  double get_avg_rtt_ms() const {
+    if (total_packets_acked == 0 || in_flight_packets.empty()) {
+      return 0.0;
+    }
+    // Simplified: use time difference between last TX and last ACK
+    return (last_ack_timestamp_us - last_tx_timestamp_us) / 1000.0;
+  }
+  
+  /// Get number of packets in flight
+  size_t get_packets_in_flight() const {
+    return in_flight_packets.size();
+  }
 };
 
 

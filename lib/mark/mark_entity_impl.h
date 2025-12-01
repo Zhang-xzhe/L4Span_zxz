@@ -171,6 +171,39 @@ public:
           rx.get()->five_tuple_to_rtt[pkt_five_tuple].ingress_of_syn = ts.count();
         }
         
+        // Track TCP packets with payload for in-flight monitoring
+        uint16_t tcp_payload_len = ipv4_hdr->tot_len - sizeof(iphdr) - (tcp_hdr->doff * 4);
+        if (tcp_payload_len > 0 && !(uint8_t)tcp_hdr->syn && !(uint8_t)tcp_hdr->rst) {
+          // Only track data packets (not pure ACKs, SYN, or RST)
+          uint8_t ect = ipv4_hdr->tos & ip::INET_ECN_MASK;
+          ip::tcp_packet_info pkt_info(tcp_hdr->seq, tcp_payload_len, ipv4_hdr->tot_len, ts.count(), ect);
+          
+          // Copy the complete IP packet data for potential retransmission or deep inspection
+          pkt_info.packet_data.resize(ipv4_hdr->tot_len);
+          memcpy(pkt_info.packet_data.data(), (*sdu_it).data(), ipv4_hdr->tot_len);
+          
+          // Check if this is a retransmission
+          auto& flow_track = rx.get()->tcp_flow_tracking[pkt_five_tuple];
+          for (const auto& in_flight_pkt : flow_track.in_flight_packets) {
+            if (tcp_hdr->seq == in_flight_pkt.seq_num) {
+              pkt_info.is_retransmission = true;
+              flow_track.total_retransmissions++;
+              logger.log_debug("TCP retransmission detected: seq={}, flow={}", tcp_hdr->seq, pkt_five_tuple);
+              break;
+            }
+          }
+          
+          // Add to in-flight queue
+          flow_track.in_flight_packets.push_back(std::move(pkt_info));
+          flow_track.total_packets_sent++;
+          flow_track.last_tx_timestamp_us = ts.count();
+          flow_track.next_expected_seq = tcp_hdr->seq + tcp_payload_len;
+          
+          logger.log_debug("TX TCP packet tracked: seq={}, len={}, pkt_size={}, in_flight={}, flow={}", 
+                          tcp_hdr->seq, tcp_payload_len, ipv4_hdr->tot_len,
+                          flow_track.get_packets_in_flight(), pkt_five_tuple);
+        }
+        
         // Insert the packet into the DRB queue
         drb_queue_update(*ipv4_hdr, drb_id, ts, pkt_five_tuple);
         update_drb_flow_state_tcp(*ipv4_hdr, *tcp_hdr, drb_id, ts);
@@ -713,7 +746,20 @@ private:
   }
 
 public:
-  
+  struct tcp_packet_info {
+    uint32_t seq_num;
+    uint32_t end_seq_num;
+    uint16_t payload_len;
+    int64_t  tx_timestamp_us;
+    uint8_t  ecn_mark;
+    bool     is_retransmission;
+    
+    // 添加完整包的副本
+    byte_buffer packet_copy;  // 存储整个 IP 包的副本
+    
+    // 或者只存储 TCP 载荷
+    std::vector<uint8_t> tcp_payload;  // 只存储 TCP 数据部分
+  };
 };
 
 } // namespace srs_cu_up

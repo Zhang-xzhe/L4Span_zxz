@@ -7,6 +7,7 @@
 
 #include <sstream>
 #include <iomanip>
+#include <chrono>
 
 namespace srsran{
 
@@ -54,6 +55,47 @@ public:
         ip::swap_tcphdr(tcp_hdr);        
         pkt_five_tuple = ip::extract_five_tuple_for_ack(*ipv4_hdr, *tcp_hdr);
         drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
+        
+        // Process ACK to remove acknowledged packets from in-flight queue
+        if ((uint8_t)tcp_hdr->ack && tcp_hdr->ack_seq > 0) {
+          auto& flow_track = tcp_flow_tracking[pkt_five_tuple];
+          uint32_t ack_num = tcp_hdr->ack_seq;
+          
+          // Get current timestamp
+          auto now = std::chrono::system_clock::now();
+          auto duration = now.time_since_epoch();
+          auto ts_us = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+          
+          // Remove all packets that are fully acknowledged (cumulative ACK)
+          size_t removed_count = 0;
+          while (!flow_track.in_flight_packets.empty()) {
+            auto& front_pkt = flow_track.in_flight_packets.front();
+            // Check if this packet is fully acknowledged
+            if (front_pkt.end_seq_num <= ack_num) {
+              // Calculate RTT for this packet
+              int64_t rtt_us = ts_us - front_pkt.tx_timestamp_us;
+              logger.log_debug("TCP ACK received: seq={}, ack={}, payload_len={}, RTT={} us, ECN={}, flow={}", 
+                              front_pkt.seq_num, ack_num, front_pkt.payload_len, 
+                              rtt_us, front_pkt.ecn_mark, pkt_five_tuple);
+              
+              flow_track.in_flight_packets.pop_front();
+              flow_track.total_packets_acked++;
+              flow_track.last_ack_received = ack_num;
+              flow_track.last_ack_timestamp_us = ts_us;
+              removed_count++;
+            } else {
+              // Packets are in order, so we can stop
+              break;
+            }
+          }
+          
+          if (removed_count > 0) {
+            logger.log_debug("Removed {} ACKed packets, remaining in_flight={}, avg_RTT={} ms, flow={}", 
+                            removed_count, flow_track.get_packets_in_flight(), 
+                            flow_track.get_avg_rtt_ms(), pkt_five_tuple);
+          }
+        }
+        
         if (tcp_hdr->ack_seq > 0 && tcp_hdr->ack_seq < five_tuple_to_drb[pkt_five_tuple].ack_raw) {
           // The lowest ACK for ack raw + 1;
           five_tuple_to_drb[pkt_five_tuple].ack_raw = tcp_hdr->ack_seq - 1;
