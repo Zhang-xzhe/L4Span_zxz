@@ -23,6 +23,7 @@
 #pragma once
 
 #include "srsran/ran/sch/sch_mcs.h"
+#include "srsran/ran/slot_point.h"
 #include "srsran/scheduler/harq_id.h"
 #include <optional>
 #include <string>

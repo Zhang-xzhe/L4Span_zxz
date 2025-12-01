@@ -22,6 +22,7 @@
 
 #include "srsran/scheduler/scheduler_trace.h"
 #include "srsran/srslog/srslog.h"
+#include "srsran/ran/slot_point.h"
 #include <fstream>
 #include <sstream>
 
@@ -89,11 +90,15 @@ bool dl_scheduler_trace_manager::parse_trace_line(const std::string& line, dl_sc
   int                harq_id_int = -1;
 
   // Parse format: slot_index, mcs, tbs, needs_retx, retx_count[, harq_id]
+  unsigned mcs_val;
+
+
   iss >> sample.slot_index >> comma 
-      >> sample.mcs >> comma 
+      >> mcs_val >> comma 
       >> sample.tbs >> comma 
       >> needs_retx_int >> comma 
       >> sample.retx_count;
+sample.mcs = sch_mcs_index{static_cast<uint8_t>(mcs_val)};
 
   if (iss.fail()) {
     return false;
