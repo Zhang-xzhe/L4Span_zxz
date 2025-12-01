@@ -583,6 +583,7 @@ private:
       double dq_std = 0;
       for (size_t i = next_tx_id[drb_id] - dequeue_rate_pred_wind; i < next_tx_id[drb_id]; i ++) {
         pred_dq_rate += drb_pdcp_sn_ts[drb_id][i].cal_dequeue_rate / (double)dequeue_rate_pred_wind;
+        //printf("cal_dequeue_rate: %.2f\n", drb_pdcp_sn_ts[drb_id][i].cal_dequeue_rate);
       }
       for (size_t i = next_tx_id[drb_id] - dequeue_rate_pred_wind; i < next_tx_id[drb_id]; i ++) {
         dq_std += (pred_dq_rate - drb_pdcp_sn_ts[drb_id][i].cal_dequeue_rate) * (pred_dq_rate - drb_pdcp_sn_ts[drb_id][i].cal_dequeue_rate) / (double)dequeue_rate_pred_wind;
@@ -621,6 +622,10 @@ private:
     }
     drb_pdcp_sn_ts[drb_id].back().standing_queue_size = standing_queue_sz;
     drb_pdcp_sn_ts[drb_id].back().est_queue_delay = standing_queue_sz / drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].pred_dequeue_rate;
+    printf("standing_queue_sz: %.2f, pred_dequeue_rate: %.2f, est_queue_delay: %.2f\n",
+      standing_queue_sz,
+      drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].pred_dequeue_rate,
+      drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].est_queue_delay);
   }
 
   void make_mark_decision(drb_id_t drb_id) 
@@ -640,7 +645,12 @@ private:
     rx.get()->drb_flow_state[drb_id].predicted_dequeue_rate = predicted_dequeue_rate;
     rx.get()->drb_flow_state[drb_id].required_dequeue_rate = required_dequeue_rate;
     rx.get()->drb_flow_state[drb_id].predicted_error = predicted_error;
-    rx.get()->drb_flow_state[drb_id].predicted_qdely = predicted_qdely;
+    if (predicted_qdely > 0.1) {
+      rx.get()->drb_flow_state[drb_id].predicted_qdely = predicted_qdely;
+    }
+    // printf("cal_cal_dequeue_rate: cal_dequeue_rate: %.2f, est_queue_delay: %.2f\n",
+    //   drb_pdcp_sn_ts[drb_id][2].cal_dequeue_rate,
+    //   drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].est_queue_delay);
 
     logger.log_debug("required_dequeue_rate {}, predicted_dequeue_rate {}, predicted_error {}, est_dequeue_time {}, queue_size {}", 
       required_dequeue_rate, 

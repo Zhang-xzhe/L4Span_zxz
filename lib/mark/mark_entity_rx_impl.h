@@ -60,19 +60,27 @@ public:
           // logger.log_debug("Lowest ack_raw {}", tcp_hdr->ack_seq - 1);
         }
         // Update the minimum RTT
-        Min_RTT = std::min<double>(Min_RTT, drb_flow_state[drb_id].predicted_qdely);
+        if (drb_flow_state[drb_id].predicted_qdely > 0) {
+          Min_RTT = std::min<double>(Min_RTT, drb_flow_state[drb_id].predicted_qdely);
+        }
         // Update the maximum throughput
-        Max_troughput = std::max<double>(Max_troughput, drb_flow_state[drb_id].predicted_dequeue_rate);
+        Max_throughput = std::max<double>(Max_throughput, drb_flow_state[drb_id].predicted_dequeue_rate);
         // Update the RWND
-        RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha*(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
-        if((uint32_t)RWND < 20) {
-          tcp_hdr->window = 20; // Minimum RWND
-          printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+        double RWND1 = (1-gamma) * RWND;
+        double RWND2 = gamma * (Min_RTT / drb_flow_state[drb_id].predicted_qdely) * RWND;
+        double RWND3 = gamma*Alpha * (1 - drb_flow_state[drb_id].predicted_dequeue_rate / Max_throughput);
+        if(RWND1<1000&&RWND2<1000&&RWND3<1000){
+          RWND =  RWND1 + RWND2 + RWND3;
+        }
+        
+        if((uint32_t)RWND < 0.2) {
+          tcp_hdr->window = 1; // Minimum RWND
         }
         else{
           tcp_hdr->window = (uint32_t)RWND;
         }
-        printf("tcp_hdr window size %u\n, after %u\n,Min_RTT %u,Max_throughput %u\n", tcp_hdr->window, (uint32_t)RWND, (uint32_t)Min_RTT, (uint32_t)Max_troughput);
+        printf("predicted_qdely %f, predicted_dequeue_rate %f\n", drb_flow_state[drb_id].predicted_qdely, drb_flow_state[drb_id].predicted_dequeue_rate);
+        printf("tcp_hdr window size %u\n, after RWND1 %f, RWND2 %f, RWND 3 %f, RWND%f\n,Min_RTT %f,Max_throughput %f\n", tcp_hdr->window, RWND1, RWND2, RWND3, RWND, Min_RTT, Max_throughput);
         auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
         tcp_hdr->check = sum;
         ip::swap_tcphdr(tcp_hdr);
@@ -120,9 +128,9 @@ private:
   mark_rx_sdu_notifier&   sdu_notifier;
   double RWND = 100;
   double gamma = 0.1;
-  double Alpha = 0.5;
-  double Min_RTT = 10;
-  double Max_troughput = 1000;
+  double Alpha = 200;
+  double Min_RTT = 100000000;
+  double Max_throughput = 0.01;
 
 public:
   void perform_ip_mark(uint8_t* pdu, iphdr* ipv4_hdr, drb_id_t drb_id, ip::five_tuple five_tuple) {    
