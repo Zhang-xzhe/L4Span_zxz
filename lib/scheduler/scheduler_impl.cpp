@@ -32,6 +32,16 @@ scheduler_impl::scheduler_impl(const scheduler_config& sched_cfg_) :
   metrics(expert_params.metrics_report_period, sched_cfg_.metrics_notifier),
   cfg_mng(sched_cfg_, metrics)
 {
+  // Initialize DL scheduler trace manager if trace file is provided
+  if (!expert_params.dl_scheduler_trace_file.empty()) {
+    dl_trace_mgr = std::make_unique<dl_scheduler_trace_manager>(expert_params.dl_scheduler_trace_file);
+    if (dl_trace_mgr->is_valid()) {
+      logger.info("DL scheduler trace-based mode enabled with {} samples", dl_trace_mgr->size());
+    } else {
+      logger.warning("DL scheduler trace file provided but invalid. Running without trace.");
+      dl_trace_mgr.reset();
+    }
+  }
 }
 
 bool scheduler_impl::handle_cell_configuration_request(const sched_cell_configuration_request_message& msg)
@@ -44,7 +54,7 @@ bool scheduler_impl::handle_cell_configuration_request(const sched_cell_configur
   // Check if it is a new DU Cell Group.
   if (not groups.contains(msg.cell_group_index)) {
     // If it is a new group, create a new instance.
-    groups.emplace(msg.cell_group_index, std::make_unique<ue_scheduler_impl>(expert_params.ue));
+    groups.emplace(msg.cell_group_index, std::make_unique<ue_scheduler_impl>(expert_params.ue, dl_trace_mgr.get()));
   }
 
   // Create a new cell scheduler instance.

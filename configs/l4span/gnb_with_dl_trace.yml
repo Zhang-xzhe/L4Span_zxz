@@ -1,0 +1,45 @@
+# Example gNB configuration with DL scheduler trace
+
+cell_cfg:
+  dl_arfcn: 632628
+  band: 78
+  channel_bandwidth_MHz: 20
+  common_scs: 30
+  plmn: "00101"
+  tac: 7
+
+ru_sdr:
+  device_driver: zmq
+  device_args: tx_port=tcp://*:2000,rx_port=tcp://localhost:2001,base_srate=23.04e6
+
+log:
+  filename: /tmp/gnb_trace.log
+  all_level: info
+  
+  # Enable detailed scheduler logs to see trace application
+  sched_level: debug
+
+metrics:
+  enable_json_metrics: true
+  addr: 127.0.0.1
+  port: 55555
+
+# Expert configuration for scheduler
+expert_execution:
+  threads:
+    non_rt_pool_size: 4
+    
+  scheduler:
+    # Enable trace-based DL scheduling
+    # Comment out this line to disable trace-based mode
+    dl_scheduler_trace_file: "configs/l4span/dl_sched_varying_trace.csv"
+    
+    # Use constant MCS for testing
+    # dl_scheduler_trace_file: "configs/l4span/dl_sched_constant_trace.csv"
+    
+    # Or use mobility scenario
+    # dl_scheduler_trace_file: "configs/l4span/dl_sched_mobility_trace.csv"
+    
+    # Other scheduler parameters
+    max_nof_rbs_per_pusch: 275
+    max_nof_rbs_per_pdsch: 275

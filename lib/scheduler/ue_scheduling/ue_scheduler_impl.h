@@ -35,6 +35,7 @@
 #include "ue_repository.h"
 #include "ue_scheduler.h"
 #include "srsran/scheduler/config/scheduler_expert_config.h"
+#include "srsran/scheduler/scheduler_trace.h"
 #include <mutex>
 
 namespace srsran {
@@ -44,7 +45,8 @@ namespace srsran {
 class ue_scheduler_impl final : public ue_scheduler
 {
 public:
-  explicit ue_scheduler_impl(const scheduler_ue_expert_config& expert_cfg_);
+  explicit ue_scheduler_impl(const scheduler_ue_expert_config& expert_cfg_,
+                            dl_scheduler_trace_manager*       trace_mgr_ = nullptr);
 
   void add_cell(const ue_scheduler_cell_params& params) override;
 

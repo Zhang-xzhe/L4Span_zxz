@@ -36,8 +36,9 @@ using namespace srsran;
 
 ue_cell_grid_allocator::ue_cell_grid_allocator(const scheduler_ue_expert_config& expert_cfg_,
                                                ue_repository&                    ues_,
-                                               srslog::basic_logger&             logger_) :
-  expert_cfg(expert_cfg_), ues(ues_), logger(logger_)
+                                               srslog::basic_logger&             logger_,
+                                               dl_scheduler_trace_manager*       trace_mgr_) :
+  expert_cfg(expert_cfg_), ues(ues_), logger(logger_), trace_mgr(trace_mgr_)
 {
 }
 
@@ -352,16 +353,37 @@ alloc_result ue_cell_grid_allocator::allocate_dl_grant(const ue_pdsch_grant& gra
     std::optional<sch_mcs_tbs> mcs_tbs_info;
     // If it's a new Tx, compute the MCS and TBS.
     if (not is_retx) {
-      // As \c txDirectCurrentLocation, in \c SCS-SpecificCarrier, TS 38.331, "If this field (\c
-      // txDirectCurrentLocation) is absent for downlink within ServingCellConfigCommon and ServingCellConfigCommonSIB,
-      // the UE assumes the default value of 3300 (i.e. "Outside the carrier")".
-      bool contains_dc = false;
-      if (cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.has_value()) {
-        contains_dc = dc_offset_helper::is_contained(
-            cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.value(), crbs);
+      // Check if we should use trace-based MCS/TBS
+      std::optional<dl_scheduler_trace_sample> trace_sample;
+      if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
+        trace_sample = trace_mgr->get_trace_sample(pdsch_alloc.slot);
       }
 
-      mcs_tbs_info = compute_dl_mcs_tbs(pdsch_cfg, adjusted_mcs, crbs.length(), contains_dc);
+      if (trace_sample.has_value()) {
+        // Use MCS and TBS from trace
+        mcs_tbs_info.emplace(sch_mcs_tbs{
+          .mcs = trace_sample->mcs,
+          .tbs = trace_sample->tbs
+        });
+        logger.debug("ue={} rnti={}: Using trace MCS={} TBS={} (slot={})",
+                     u.ue_index,
+                     u.crnti,
+                     trace_sample->mcs.to_uint(),
+                     trace_sample->tbs,
+                     pdsch_alloc.slot);
+      } else {
+        // Normal MCS/TBS calculation
+        // As \c txDirectCurrentLocation, in \c SCS-SpecificCarrier, TS 38.331, "If this field (\c
+        // txDirectCurrentLocation) is absent for downlink within ServingCellConfigCommon and ServingCellConfigCommonSIB,
+        // the UE assumes the default value of 3300 (i.e. "Outside the carrier")".
+        bool contains_dc = false;
+        if (cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.has_value()) {
+          contains_dc = dc_offset_helper::is_contained(
+              cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.value(), crbs);
+        }
+
+        mcs_tbs_info = compute_dl_mcs_tbs(pdsch_cfg, adjusted_mcs, crbs.length(), contains_dc);
+      }
     } else {
       // It is a retx.
       mcs_tbs_info.emplace(sch_mcs_tbs{.mcs = h_dl->get_grant_params().mcs, .tbs = h_dl->get_grant_params().tbs_bytes});
