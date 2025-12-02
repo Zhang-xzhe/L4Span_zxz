@@ -167,7 +167,6 @@ public:
 
 private:
   mark_session_trx_logger logger;
-  mark_rx_sdu_notifier&   sdu_notifier;
   double RWND = 100;
   double gamma = 0.1;
   double Alpha = 200;
@@ -175,6 +174,8 @@ private:
   double Max_throughput = 0.01;
 
 public:
+  mark_rx_sdu_notifier&   sdu_notifier;  // Made public for periodic timer access
+  
   void perform_ip_mark(uint8_t* pdu, iphdr* ipv4_hdr, drb_id_t drb_id, ip::five_tuple five_tuple) {    
     uint8_t ect = ipv4_hdr->tos & ip::INET_ECN_MASK;
     if (ect == ip::INET_ECN_CE) {

@@ -7,6 +7,10 @@
 #include "srsran/support/timers.h"
 #include <unordered_map>
 #include "srsran/ctsa/ctsa.h"
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 namespace srsran {
 
@@ -27,7 +31,8 @@ public:
     logger("MARK", {ue_index_, psi_}), 
     ue_index(ue_index_), 
     psi(psi_), 
-    rx_sdu_notifier(rx_sdu_notifier_)
+    rx_sdu_notifier(rx_sdu_notifier_),
+    periodic_timer_running(false)
   {
     dequeue_rate_cal_wind = 50;
     dequeue_rate_pred_wind = 50;
@@ -36,8 +41,14 @@ public:
     dequeue_history = (double*)malloc(sizeof(double) * dequeue_rate_pred_wind);
     n_max = 1500*150;
     nof_ue = 1;
+    
+    // Start periodic timer thread
+    start_periodic_timer();
   }
-  ~mark_entity_impl() override = default;
+  
+  ~mark_entity_impl() override {
+    stop_periodic_timer();
+  }
 
   mark_rx_pdu_handler& get_mark_rx_pdu_handler() final{ return *rx.get(); };
   mark_tx_sdu_handler& get_mark_tx_sdu_handler() final { return *this; };
@@ -496,6 +507,19 @@ private:
   double classic_tq_thr;
   uint32_t n_max;
 
+  // Periodic timer for RLC queue monitoring and TCP ACK generation
+  std::thread periodic_timer_thread;
+  std::atomic<bool> periodic_timer_running;
+  std::mutex data_mutex;  // Protect shared data structures
+  std::condition_variable timer_cv;
+  
+  // Statistics for periodic monitoring
+  struct periodic_stats {
+    uint64_t total_checks = 0;
+    uint64_t acks_generated = 0;
+    int64_t last_check_timestamp_us = 0;
+  } periodic_stats;
+
   // called upon receiving a downlink packet
   void drb_queue_update(iphdr ipv4_hdr, drb_id_t drb_id, std::chrono::microseconds now, ip::five_tuple f_tuple)
   {
@@ -760,8 +784,256 @@ public:
     // 或者只存储 TCP 载荷
     std::vector<uint8_t> tcp_payload;  // 只存储 TCP 数据部分
   };
+
+  /// Start the periodic timer thread (1ms interval)
+  void start_periodic_timer() {
+    periodic_timer_running = true;
+    periodic_timer_thread = std::thread([this]() {
+      logger.log_info("Periodic timer thread started");
+      
+      while (periodic_timer_running) {
+        auto start_time = std::chrono::steady_clock::now();
+        
+        // Perform periodic tasks
+        periodic_task();
+        
+        // Sleep for 1ms (adjusting for processing time)
+        auto end_time = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        auto sleep_time = std::chrono::microseconds(5000) - elapsed;
+        
+        if (sleep_time.count() > 0) {
+          std::unique_lock<std::mutex> lock(data_mutex);
+          timer_cv.wait_for(lock, sleep_time, [this]() { return !periodic_timer_running.load(); });
+        }
+      }
+      
+      logger.log_info("Periodic timer thread stopped");
+    });
+  }
+  
+  /// Stop the periodic timer thread
+  void stop_periodic_timer() {
+    if (periodic_timer_running) {
+      periodic_timer_running = false;
+      timer_cv.notify_all();
+      if (periodic_timer_thread.joinable()) {
+        periodic_timer_thread.join();
+      }
+      logger.log_info("Periodic timer stopped, total_checks={}, acks_generated={}", 
+                     periodic_stats.total_checks, periodic_stats.acks_generated);
+    }
+  }
+  
+  /// Periodic task executed every 1ms
+  void periodic_task() {
+    std::lock_guard<std::mutex> lock(data_mutex);
+    
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto ts_us = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+    
+    periodic_stats.total_checks++;
+    periodic_stats.last_check_timestamp_us = ts_us;
+    
+    // Task 1: Check RLC queue length and sending rate
+    check_rlc_queue_and_rate();
+    
+    // Task 2: Generate TCP ACKs for received packets
+    generate_tcp_acks();
+    
+    // Log periodically (every 1000 checks = 1 second)
+    if (periodic_stats.total_checks % 1000 == 0) {
+      logger.log_debug("Periodic stats: checks={}, acks_generated={}", 
+                      periodic_stats.total_checks, periodic_stats.acks_generated);
+    }
+  }
+  
+  /// Check RLC queue length and sending rate for all DRBs
+  void check_rlc_queue_and_rate() {
+    // Iterate through all DRBs and check their queue status
+    for (auto& [drb_id, pdcp_vec] : drb_pdcp_sn_ts) {
+      // Calculate current queue length
+      size_t queue_length = 0;
+      size_t queue_bytes = 0;
+      
+      if (next_tx_id.find(drb_id) != next_tx_id.end()) {
+        size_t tx_id = next_tx_id[drb_id];
+        for (size_t i = tx_id; i < pdcp_vec.size(); i++) {
+          queue_length++;
+          queue_bytes += pdcp_vec[i].size;
+        }
+      }
+      
+      // Get current sending rate (from last prediction)
+      double sending_rate_bps = 0.0;
+      if (!pdcp_vec.empty() && pdcp_vec.back().pred_dequeue_rate > 0) {
+        sending_rate_bps = pdcp_vec.back().pred_dequeue_rate * 8; // Convert to bits per second
+      }
+      
+      // Log queue status if there's something in the queue
+      if (queue_length > 0) {
+        logger.log_debug("DRB {} queue: packets={}, bytes={}, rate={} bps", 
+                        drb_id, queue_length, queue_bytes, sending_rate_bps);
+      }
+      
+      // TODO: Add interface to query actual RLC layer queue status
+      // This requires adding a callback or interface to RLC layer
+      // Example:
+      // if (rlc_interface) {
+      //   auto rlc_status = rlc_interface->get_queue_status(drb_id);
+      //   logger.log_debug("RLC queue: bytes={}, packets={}", 
+      //                   rlc_status.queue_bytes, rlc_status.queue_packets);
+      // }
+    }
+  }
+  
+  /// Generate TCP ACKs for received packets that need acknowledgment
+  void generate_tcp_acks() {
+    if (!rx) {
+      return;  // RX not initialized yet
+    }
+    
+    // Iterate through all TCP flows and check if we need to generate ACKs
+    for (auto& [five_tuple, flow_track] : rx->tcp_flow_tracking) {
+      // Check if there are acknowledged packets we should generate ACKs for
+      // Only generate ACK if we have actually received and ACKed packets
+      if (flow_track.total_packets_acked > 0 && 
+          flow_track.last_ack_received > 0) {
+        
+        // Find the QFI for this flow
+        auto drb_it = rx->five_tuple_to_drb.find(five_tuple);
+        if (drb_it == rx->five_tuple_to_drb.end()) {
+          logger.log_debug("Flow not found in five_tuple_to_drb map");
+          continue;
+        }
+        
+        drb_id_t drb_id = drb_it->second.drb_id;
+        
+        // Find QFI from drb_id (reverse lookup)
+        qos_flow_id_t target_qfi = qos_flow_id_t::min;
+        bool found_qfi = false;
+        for (auto& [qfi, mapped_drb] : qfi_to_drb) {
+          if (mapped_drb == drb_id) {
+            target_qfi = qfi;
+            found_qfi = true;
+            break;
+          }
+        }
+        
+        if (!found_qfi) {
+          logger.log_debug("QFI not found for drb_id={}", drb_id);
+          continue;
+        }
+        
+        // Generate our sequence number (simplified: use a counter or fixed value)
+        // In real implementation, should track our own seq numbers per flow
+        uint32_t our_seq_num = flow_track.last_ack_received;  // Simplified
+        
+        // Construct TCP ACK packet
+        byte_buffer ack_packet = construct_tcp_ack(
+            five_tuple,
+            flow_track.last_ack_received,  // ACK number
+            our_seq_num,                    // Our SEQ number
+            flow_track.last_ack_timestamp_us
+        );
+        
+        if (ack_packet.length() > 0) {
+          logger.log_info("Generating TCP ACK: flow={}, ack_seq={}, qfi={}, packets_acked={}", 
+                          five_tuple, 
+                          flow_track.last_ack_received,
+                          target_qfi,
+                          flow_track.total_packets_acked);
+          
+          // Send the ACK packet via rx_sdu_notifier
+          rx->sdu_notifier.on_new_sdu(std::move(ack_packet), target_qfi);
+          periodic_stats.acks_generated++;
+          
+          // Reset ACK counter to avoid sending duplicate ACKs
+          // (In real implementation, should track what's been ACKed)
+          flow_track.total_packets_acked = 0;
+        } else {
+          logger.log_error("Failed to construct TCP ACK packet for flow={}", five_tuple);
+        }
+      }
+    }
+  }
+  
+  /// Helper function to construct TCP ACK packet
+  byte_buffer construct_tcp_ack(const ip::five_tuple& flow, 
+                                 uint32_t ack_num, 
+                                 uint32_t seq_num,
+                                 int64_t timestamp_us) {
+    byte_buffer ack_pkt;
+    
+    // Allocate buffer for IP + TCP headers (40 bytes minimum for ACK without options)
+    const size_t ip_header_size = sizeof(iphdr);
+    const size_t tcp_header_size = sizeof(tcphdr);
+    const size_t total_size = ip_header_size + tcp_header_size;
+    
+    // Append space for headers
+    if (!ack_pkt.append(std::vector<uint8_t>(total_size, 0))) {
+      logger.log_error("Failed to allocate buffer for TCP ACK packet");
+      return ack_pkt;
+    }
+    
+    // Get pointer to buffer data
+    auto seg_it = ack_pkt.segments().begin();
+    if (seg_it == ack_pkt.segments().end()) {
+      logger.log_error("Invalid buffer segments for TCP ACK");
+      return byte_buffer();
+    }
+    uint8_t* pkt_data = const_cast<uint8_t*>((*seg_it).data());
+    
+    // Construct IP header (reverse direction: dst -> src)
+    iphdr* ip_hdr = reinterpret_cast<iphdr*>(pkt_data);
+    ip_hdr->version = 4;
+    ip_hdr->ihl = 5;  // 5 * 4 = 20 bytes
+    ip_hdr->tos = ip::INET_ECN_ECT_0;  // ECN capable
+    ip_hdr->tot_len = total_size;
+    ip_hdr->id = 0;  // Can be 0 for ACK packets
+    ip_hdr->frag_off = 0;
+    ip_hdr->ttl = 64;
+    ip_hdr->protocol = 6;  // TCP
+    ip_hdr->check = 0;  // Will calculate later
+    // Reverse src/dst (ACK goes back)
+    ip_hdr->saddr = flow.dst_addr;
+    ip_hdr->daddr = flow.src_addr;
+    
+    // Construct TCP header (reverse direction: dst -> src)
+    tcphdr* tcp_hdr = reinterpret_cast<tcphdr*>(pkt_data + ip_header_size);
+    tcp_hdr->source = flow.dst_port;
+    tcp_hdr->dest = flow.src_port;
+    tcp_hdr->seq = seq_num;  // Our sequence number
+    tcp_hdr->ack_seq = ack_num;  // Acknowledging their data
+    tcp_hdr->doff = 5;  // 5 * 4 = 20 bytes (no options)
+    tcp_hdr->res1 = 0;
+    tcp_hdr->cwr = 0;
+    tcp_hdr->ece = 0;
+    tcp_hdr->urg = 0;
+    tcp_hdr->ack = 1;  // ACK flag set
+    tcp_hdr->psh = 0;
+    tcp_hdr->rst = 0;
+    tcp_hdr->syn = 0;
+    tcp_hdr->fin = 0;
+    tcp_hdr->window = 65535;  // Advertise large window
+    tcp_hdr->check = 0;  // Will calculate later
+    tcp_hdr->urg_ptr = 0;
+    
+    // Calculate checksums (need to swap before checksum calculation)
+    ip::swap_iphdr(ip_hdr);
+    ip::swap_tcphdr(tcp_hdr);
+    
+    // Calculate IP checksum
+    ip_hdr->check = ip::compute_ip_checksum(ip_hdr);
+    
+    // Calculate TCP checksum
+    tcp_hdr->check = ip::compute_tcp_checksum(ip_hdr, tcp_hdr, pkt_data);
+    
+    logger.log_debug("Constructed TCP ACK: src={}:{}, dst={}:{}, seq={}, ack={}", 
+                    flow.dst_addr, flow.dst_port, flow.src_addr, flow.src_port,
+                    seq_num, ack_num);
+    
+    return ack_pkt;
+  }
 };
-
-} // namespace srs_cu_up
-
-} // namespace srsran
