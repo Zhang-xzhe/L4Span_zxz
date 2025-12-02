@@ -353,36 +353,46 @@ alloc_result ue_cell_grid_allocator::allocate_dl_grant(const ue_pdsch_grant& gra
     std::optional<sch_mcs_tbs> mcs_tbs_info;
     // If it's a new Tx, compute the MCS and TBS.
     if (not is_retx) {
-      // Check if we should use trace-based MCS/TBS
-      std::optional<dl_scheduler_trace_sample> trace_sample;
-      if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
-        trace_sample = trace_mgr->get_trace_sample(pdsch_alloc.slot);
+      // Always perform normal MCS/TBS calculation first
+      // As \c txDirectCurrentLocation, in \c SCS-SpecificCarrier, TS 38.331, "If this field (\c
+      // txDirectCurrentLocation) is absent for downlink within ServingCellConfigCommon and ServingCellConfigCommonSIB,
+      // the UE assumes the default value of 3300 (i.e. "Outside the carrier")".
+      bool contains_dc = false;
+      if (cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.has_value()) {
+        contains_dc = dc_offset_helper::is_contained(
+            cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.value(), crbs);
       }
 
-      if (trace_sample.has_value()) {
-        // Use MCS and TBS from trace
-        mcs_tbs_info.emplace(sch_mcs_tbs{
-          .mcs = trace_sample->mcs,
-          .tbs = trace_sample->tbs
-        });
-        logger.debug("ue={} rnti={}: Using trace MCS={} TBS={} (slot={})",
-                     u.ue_index,
-                     u.crnti,
-                     trace_sample->mcs.to_uint(),
-                     trace_sample->tbs,
-                     pdsch_alloc.slot);
-      } else {
-        // Normal MCS/TBS calculation
-        // As \c txDirectCurrentLocation, in \c SCS-SpecificCarrier, TS 38.331, "If this field (\c
-        // txDirectCurrentLocation) is absent for downlink within ServingCellConfigCommon and ServingCellConfigCommonSIB,
-        // the UE assumes the default value of 3300 (i.e. "Outside the carrier")".
-        bool contains_dc = false;
-        if (cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.has_value()) {
-          contains_dc = dc_offset_helper::is_contained(
-              cell_cfg.dl_cfg_common.freq_info_dl.scs_carrier_list.back().tx_direct_current_location.value(), crbs);
+      mcs_tbs_info = compute_dl_mcs_tbs(pdsch_cfg, adjusted_mcs, crbs.length(), contains_dc);
+      
+      // Check if we should limit TBS based on trace
+      if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
+        std::optional<dl_scheduler_trace_sample> trace_sample = trace_mgr->get_trace_sample(pdsch_alloc.slot);
+        
+        if (trace_sample.has_value() && mcs_tbs_info.has_value()) {
+          // Compare normal TBS with trace TBS, use the smaller one
+          if (mcs_tbs_info->tbs > trace_sample->tbs) {
+            unsigned original_tbs = mcs_tbs_info->tbs;
+            mcs_tbs_info->tbs = trace_sample->tbs;
+            
+            logger.debug("ue={} rnti={}: TBS limited by trace: normal_TBS={} > trace_TBS={}, using trace_TBS={} with normal_MCS={} (slot={})",
+                         u.ue_index,
+                         u.crnti,
+                         original_tbs,
+                         trace_sample->tbs,
+                         mcs_tbs_info->tbs,
+                         mcs_tbs_info->mcs.to_uint(),
+                         pdsch_alloc.slot);
+          } else {
+            logger.debug("ue={} rnti={}: Using normal TBS={} (trace_TBS={}, MCS={}, slot={})",
+                         u.ue_index,
+                         u.crnti,
+                         mcs_tbs_info->tbs,
+                         trace_sample->tbs,
+                         mcs_tbs_info->mcs.to_uint(),
+                         pdsch_alloc.slot);
+          }
         }
-
-        mcs_tbs_info = compute_dl_mcs_tbs(pdsch_cfg, adjusted_mcs, crbs.length(), contains_dc);
       }
     } else {
       // It is a retx.
