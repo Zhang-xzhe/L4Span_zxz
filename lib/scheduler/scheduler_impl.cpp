@@ -36,7 +36,10 @@ scheduler_impl::scheduler_impl(const scheduler_config& sched_cfg_) :
   if (!expert_params.dl_scheduler_trace_file.empty()) {
     dl_trace_mgr = std::make_unique<dl_scheduler_trace_manager>(expert_params.dl_scheduler_trace_file);
     if (dl_trace_mgr->is_valid()) {
-      logger.info("DL scheduler trace-based mode enabled with {} samples", dl_trace_mgr->size());
+      // Configure start slot delay to allow UE access
+      dl_trace_mgr->set_start_slot(expert_params.dl_trace_start_slot);
+      logger.info("DL scheduler trace-based mode enabled with {} samples (starts at slot {})", 
+                  dl_trace_mgr->size(), expert_params.dl_trace_start_slot);
     } else {
       logger.warning("DL scheduler trace file provided but invalid. Running without trace.");
       dl_trace_mgr.reset();

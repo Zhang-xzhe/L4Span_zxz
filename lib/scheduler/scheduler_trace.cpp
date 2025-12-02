@@ -40,6 +40,7 @@ void dl_scheduler_trace_manager::load_trace_file(const std::string& filename)
   auto& logger = srslog::fetch_basic_logger("SCHED");
 
   std::ifstream file(filename);
+  
   if (!file.is_open()) {
     logger.warning("Failed to open scheduler trace file '{}'. Trace-based scheduling disabled.", filename);
     enabled_ = false;
@@ -133,6 +134,11 @@ std::optional<dl_scheduler_trace_sample>
 dl_scheduler_trace_manager::get_trace_sample(slot_point slot) const
 {
   if (!enabled_ || trace_samples_.empty()) {
+    return std::nullopt;
+  }
+
+  // Don't apply trace until UE access is complete (configurable delay)
+  if (slot.to_uint() < start_slot_) {
     return std::nullopt;
   }
 

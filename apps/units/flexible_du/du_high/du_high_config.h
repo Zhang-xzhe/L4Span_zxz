@@ -89,6 +89,10 @@ struct du_high_unit_scheduler_expert_config {
   policy_scheduler_expert_config policy_sched_expert_cfg = time_rr_scheduler_expert_config{};
   /// Timing Advance MAC CE scheduling expert configuration.
   du_high_unit_ta_sched_expert_config ta_sched_cfg;
+  /// Path to DL scheduler trace file (optional).
+  std::string dl_scheduler_trace_file;
+  /// Minimum slot number before trace-based scheduling takes effect.
+  unsigned dl_trace_start_slot = 1000;
 };
 
 struct du_high_unit_ssb_config {

@@ -66,12 +66,22 @@ struct expert_threads_appconfig {
   non_rt_threads_appconfig non_rt_threads;
 };
 
+/// Scheduler configuration for expert execution.
+struct scheduler_appconfig {
+  /// Path to DL scheduler trace file (optional).
+  std::string dl_scheduler_trace_file;
+  /// Minimum slot number before trace-based scheduling takes effect.
+  unsigned dl_trace_start_slot = 1000;
+};
+
 /// Expert configuration of the gNB app.
 struct expert_execution_appconfig {
   /// gNB CPU affinities.
   cpu_affinities_appconfig affinities;
   /// Expert thread configuration of the gNB app.
   expert_threads_appconfig threads;
+  /// Scheduler configuration.
+  scheduler_appconfig scheduler;
 };
 
 /// HAL configuration of the gNB app.

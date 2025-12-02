@@ -38,6 +38,7 @@
 #include "srsran/ngap/gateways/n2_connection_client_factory.h"
 
 #include "gnb_appconfig.h"
+#include "gnb_appconfig_translators.h"
 #include "gnb_appconfig_cli11_schema.h"
 #include "gnb_appconfig_translators.h"
 #include "gnb_appconfig_validators.h"
@@ -235,6 +236,7 @@ int main(int argc, char** argv)
   // Set the callback for the app calling all the autoderivation functions.
   app.callback([&app, &gnb_cfg, &du_app_unit, &cu_cp_app_unit, &cu_up_app_unit]() {
     autoderive_gnb_parameters_after_parsing(app, gnb_cfg);
+    fill_du_scheduler_config_from_gnb_config(du_app_unit->get_du_high_unit_config(), gnb_cfg);
     autoderive_slicing_args(du_app_unit->get_du_high_unit_config(), cu_cp_app_unit->get_cu_cp_unit_config());
     du_app_unit->on_configuration_parameters_autoderivation(app);
 

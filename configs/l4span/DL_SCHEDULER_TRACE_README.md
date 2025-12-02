@@ -90,6 +90,8 @@ expert_execution:
   scheduler:
     # 启用 trace-based 调度
     dl_scheduler_trace_file: "configs/l4span/dl_sched_varying_trace.csv"
+    # 可选：设置trace开始生效的时隙（默认1000，确保UE接入完成）
+    dl_trace_start_slot: 1000
 ```
 
 #### 或通过代码配置
@@ -98,6 +100,7 @@ expert_execution:
 scheduler_expert_config sched_cfg;
 // ... 其他配置 ...
 sched_cfg.dl_scheduler_trace_file = "configs/l4span/dl_sched_varying_trace.csv";
+sched_cfg.dl_trace_start_slot = 1000;  // 可选：延迟启动trace
 ```
 
 ### 3. 运行和验证
@@ -111,11 +114,29 @@ sched_cfg.dl_scheduler_trace_file = "configs/l4span/dl_sched_varying_trace.csv";
 查看日志输出：
 
 ```
-[INFO] [SCHED] Loaded 1000 scheduler trace samples from 'configs/l4span/dl_sched_varying_trace.csv'
-[DEBUG] [SCHED] ue=1 Using trace MCS=16 TBS=5376 (slot=0)
-[DEBUG] [SCHED] ue=1 Using trace MCS=20 TBS=14112 (slot=50)
+[INFO] [SCHED] Loaded 1000 scheduler trace samples from 'configs/l4span/dl_sched_varying_trace.csv' (starts at slot 1000)
+[DEBUG] [SCHED] ue=1 Using normal scheduling (slot=500, before trace start)
+[DEBUG] [SCHED] ue=1 Using trace MCS=16 TBS=5376 (slot=1001)
+[DEBUG] [SCHED] ue=1 Using trace MCS=20 TBS=14112 (slot=1050)
 [INFO] [SCHED] ue=1 HARQ retransmission triggered by trace (retx_count=1)
 ```
+
+## UE 接入保护
+
+为了确保UE能够正常接入，trace-based调度默认在前1000个时隙不生效。这个延迟可以通过配置调整：
+
+```yaml
+expert_execution:
+  scheduler:
+    dl_scheduler_trace_file: "configs/l4span/trace.csv"
+    dl_trace_start_slot: 1500  # 延迟到1500个时隙后开始
+```
+
+### 推荐延迟设置
+
+- **最小延迟**：500 slots （确保RACH完成）
+- **推荐延迟**：1000 slots（默认，确保初始调度稳定）
+- **保守延迟**：2000 slots（适用于复杂场景）
 
 ## Trace 类型说明
 

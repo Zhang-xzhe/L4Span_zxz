@@ -72,6 +72,9 @@ public:
   /// Check if trace override is enabled
   bool is_enabled() const { return enabled_; }
 
+  /// Set the minimum slot number before trace starts to take effect
+  void set_start_slot(unsigned start_slot) { start_slot_ = start_slot; }
+
   /// Get trace sample by index (for sequential access)
   std::optional<dl_scheduler_trace_sample> get_sample_by_index(size_t index) const;
 
@@ -86,6 +89,7 @@ private:
   std::unordered_map<unsigned, size_t> slot_to_index_; ///< Map slot index to trace sample index
   bool enabled_ = true;
   size_t current_index_ = 0; ///< For sequential access
+  unsigned start_slot_ = 1000; ///< Minimum slot number before trace takes effect (default: 1000)
 };
 
 } // namespace srsran
