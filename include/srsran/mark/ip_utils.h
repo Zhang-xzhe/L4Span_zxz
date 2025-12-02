@@ -11,6 +11,8 @@
 #include <iostream>
 #include <deque>
 #include <vector>
+#include <arpa/inet.h>
+#include "fmt/format.h"
 
 namespace ip {
 
@@ -436,3 +438,29 @@ struct std::hash<ip::five_tuple>
   }
 };
 
+// Formatter specialization for ip::five_tuple
+namespace fmt {
+template <>
+struct formatter<ip::five_tuple> {
+  template <typename ParseContext>
+  auto parse(ParseContext& ctx) -> decltype(ctx.begin())
+  {
+    return ctx.begin();
+  }
+
+  template <typename FormatContext>
+  auto format(const ip::five_tuple& value, FormatContext& ctx)
+      -> decltype(std::declval<FormatContext>().out())
+  {
+    // Convert IP addresses from network byte order to readable format
+    struct in_addr src_addr_struct, dst_addr_struct;
+    src_addr_struct.s_addr = value.src_addr;
+    dst_addr_struct.s_addr = value.dst_addr;
+    
+    return format_to(ctx.out(), "{}:{} -> {}:{} (proto={})", 
+                    inet_ntoa(src_addr_struct), ntohs(value.src_port),
+                    inet_ntoa(dst_addr_struct), ntohs(value.dst_port),
+                    static_cast<int>(value.protocol));
+  }
+};
+} // namespace fmt
