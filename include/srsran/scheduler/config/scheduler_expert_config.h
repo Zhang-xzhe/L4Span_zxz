@@ -158,6 +158,10 @@ struct scheduler_expert_config {
   scheduler_ue_expert_config     ue;
   bool                           log_broadcast_messages;
   std::chrono::milliseconds      metrics_report_period;
+  /// Path to DL scheduler trace file (optional, for trace-based MCS/TBS override)
+  std::string                    dl_scheduler_trace_file;
+  /// Minimum slot number before trace-based scheduling takes effect (default: 1000)
+  unsigned                       dl_trace_start_slot = 1000;
 };
 
 } // namespace srsran

@@ -229,6 +229,11 @@ static void configure_cli11_expert_execution_args(CLI::App& app, expert_executio
   CLI::App* non_rt_threads_subcmd =
       add_subcommand(*threads_subcmd, "non_rt", "Non real time thread configuration")->configurable();
   configure_cli11_non_rt_threads_args(*non_rt_threads_subcmd, config.threads.non_rt_threads);
+
+  // Scheduler section.
+  CLI::App* scheduler_subcmd = add_subcommand(app, "scheduler", "Scheduler configuration")->configurable();
+  scheduler_subcmd->add_option("--dl_scheduler_trace_file", config.scheduler.dl_scheduler_trace_file, "Path to DL scheduler trace file");
+  scheduler_subcmd->add_option("--dl_trace_start_slot", config.scheduler.dl_trace_start_slot, "Minimum slot number before trace takes effect (default: 1000)");
 }
 
 static void manage_hal_optional(CLI::App& app, gnb_appconfig& gnb_cfg)

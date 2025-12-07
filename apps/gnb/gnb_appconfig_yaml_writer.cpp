@@ -78,6 +78,16 @@ static void fill_gnb_appconfig_expert_execution_section(YAML::Node node, const e
     YAML::Node non_rt_node            = threads_node["non_rt"];
     non_rt_node["nof_non_rt_threads"] = config.threads.non_rt_threads.nof_non_rt_threads;
   }
+
+  {
+    YAML::Node scheduler_node = node["scheduler"];
+    if (!config.scheduler.dl_scheduler_trace_file.empty()) {
+      scheduler_node["dl_scheduler_trace_file"] = config.scheduler.dl_scheduler_trace_file;
+    }
+    if (config.scheduler.dl_trace_start_slot != 1000) {
+      scheduler_node["dl_trace_start_slot"] = config.scheduler.dl_trace_start_slot;
+    }
+  }
 }
 
 static void fill_gnb_appconfig_buffer_pool_section(YAML::Node node, const buffer_pool_appconfig& config)

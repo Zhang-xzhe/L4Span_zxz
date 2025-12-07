@@ -29,6 +29,7 @@
 #include "../uci_scheduling/uci_scheduler.h"
 #include "ue_repository.h"
 #include "srsran/scheduler/config/scheduler_expert_config.h"
+#include "srsran/scheduler/scheduler_trace.h"
 
 namespace srsran {
 
@@ -39,7 +40,8 @@ class ue_cell_grid_allocator
 public:
   ue_cell_grid_allocator(const scheduler_ue_expert_config& expert_cfg_,
                          ue_repository&                    ues_,
-                         srslog::basic_logger&             logger_);
+                         srslog::basic_logger&             logger_,
+                         dl_scheduler_trace_manager*       trace_mgr_ = nullptr);
 
   /// Adds a new cell to the UE allocator.
   void add_cell(du_cell_index_t           cell_index,
@@ -79,6 +81,9 @@ private:
 
   ue_repository&        ues;
   srslog::basic_logger& logger;
+
+  // DL scheduler trace manager (optional, for trace-based scheduling)
+  dl_scheduler_trace_manager* trace_mgr;
 
   slotted_array<cell_t, MAX_NOF_DU_CELLS> cells;
 

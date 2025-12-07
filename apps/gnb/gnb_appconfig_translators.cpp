@@ -23,6 +23,7 @@
 #include "gnb_appconfig_translators.h"
 #include "apps/services/worker_manager_config.h"
 #include "apps/units/cu_cp/cu_cp_unit_config.h"
+#include "apps/units/flexible_du/du_high/du_high_config.h"
 #include "gnb_appconfig.h"
 #include "srsran/ran/subcarrier_spacing.h"
 
@@ -66,4 +67,13 @@ void srsran::fill_gnb_worker_manager_config(worker_manager_config& config, const
   config.du_hi_cfg->pdu_queue_size = config.cu_up_cfg->gtpu_queue_size;
   config.nof_low_prio_threads      = unit_cfg.expert_execution_cfg.threads.non_rt_threads.nof_non_rt_threads;
   config.low_prio_sched_config     = unit_cfg.expert_execution_cfg.affinities.low_priority_cpu_cfg;
+}
+
+void srsran::fill_du_scheduler_config_from_gnb_config(du_high_unit_config& du_cfg, const gnb_appconfig& gnb_cfg)
+{
+  // Transfer scheduler trace file configuration from GNB to DU
+  for (auto& cell_cfg : du_cfg.cells_cfg) {
+    cell_cfg.cell.sched_expert_cfg.dl_scheduler_trace_file = gnb_cfg.expert_execution_cfg.scheduler.dl_scheduler_trace_file;
+    cell_cfg.cell.sched_expert_cfg.dl_trace_start_slot = gnb_cfg.expert_execution_cfg.scheduler.dl_trace_start_slot;
+  }
 }

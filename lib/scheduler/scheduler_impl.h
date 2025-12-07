@@ -30,6 +30,7 @@
 #include "ue_scheduling/ue_scheduler.h"
 #include "srsran/scheduler/config/scheduler_expert_config.h"
 #include "srsran/scheduler/mac_scheduler.h"
+#include "srsran/scheduler/scheduler_trace.h"
 
 namespace srsran {
 
@@ -67,6 +68,10 @@ public:
   void handle_uci_indication(const uci_indication& uci) override;
   void handle_srs_indication(const srs_indication& srs) override;
 
+  /// Get DL scheduler trace manager (for trace-based scheduling).
+  dl_scheduler_trace_manager* get_dl_trace_manager() { return dl_trace_mgr.get(); }
+  const dl_scheduler_trace_manager* get_dl_trace_manager() const { return dl_trace_mgr.get(); }
+
 private:
   const scheduler_expert_config expert_params;
 
@@ -77,6 +82,9 @@ private:
 
   // Manager of configurations forwarded to the scheduler.
   sched_config_manager cfg_mng;
+
+  // DL scheduler trace manager for trace-based MCS/TBS override.
+  std::unique_ptr<dl_scheduler_trace_manager> dl_trace_mgr;
 
   /// Container of DU Cell-specific resources.
   slotted_id_table<du_cell_index_t, std::unique_ptr<cell_scheduler>, MAX_NOF_DU_CELLS> cells;
