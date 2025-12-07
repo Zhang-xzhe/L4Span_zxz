@@ -22,6 +22,7 @@
 
 #include "scheduler_time_pf.h"
 #include "../support/csi_report_helpers.h"
+#include "../ue_scheduling/ue_cell_grid_allocator.h"
 
 using namespace srsran;
 
@@ -63,7 +64,7 @@ void scheduler_time_pf::dl_sched(ue_pdsch_allocator&          pdsch_alloc,
   while (not dl_queue.empty() and rem_rbs > 0) {
     ue_ctxt& ue = *dl_queue.top();
     if (alloc_result.status != alloc_status::skip_slot) {
-      alloc_result = try_dl_alloc(ue, ues, pdsch_alloc, rem_rbs);
+      alloc_result = try_dl_alloc(ue, ues, pdsch_alloc, res_grid, rem_rbs);
     }
     ue.save_dl_alloc(alloc_result.alloc_bytes);
     // Re-add the UE to the queue if scheduling of re-transmission fails so that scheduling of retransmission are
@@ -122,10 +123,11 @@ void scheduler_time_pf::ul_sched(ue_pusch_allocator&          pusch_alloc,
   }
 }
 
-alloc_result scheduler_time_pf::try_dl_alloc(ue_ctxt&                   ctxt,
-                                             const slice_ue_repository& ues,
-                                             ue_pdsch_allocator&        pdsch_alloc,
-                                             unsigned                   max_rbs)
+alloc_result scheduler_time_pf::try_dl_alloc(ue_ctxt&                     ctxt,
+                                             const slice_ue_repository&   ues,
+                                             ue_pdsch_allocator&          pdsch_alloc,
+                                             const ue_resource_grid_view& res_grid,
+                                             unsigned                     max_rbs)
 {
   alloc_result   alloc_result = {alloc_status::invalid_params};
   ue_pdsch_grant grant{&ues[ctxt.ue_index], ctxt.cell_index};
@@ -144,6 +146,21 @@ alloc_result scheduler_time_pf::try_dl_alloc(ue_ctxt&                   ctxt,
   if (ctxt.has_empty_dl_harq) {
     grant.h_id                  = INVALID_HARQ_ID;
     grant.recommended_nof_bytes = ues[ctxt.ue_index].pending_dl_newtx_bytes();
+    
+    // Override with trace data if available
+    auto* slice_alloc = dynamic_cast<dl_slice_ue_cell_grid_allocator*>(&pdsch_alloc);
+    if (slice_alloc != nullptr) {
+      dl_scheduler_trace_manager* trace_mgr = slice_alloc->get_trace_manager();
+      if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
+        slot_point current_slot = res_grid.get_pdcch_slot(ctxt.cell_index);
+        auto trace_sample = trace_mgr->get_trace_sample(current_slot);
+        if (trace_sample.has_value()) {
+          // Override recommended bytes with trace TBS value
+          grant.recommended_nof_bytes = trace_sample->tbs;
+        }
+      }
+    }
+    
     grant.max_nof_rbs           = max_rbs;
     alloc_result                = pdsch_alloc.allocate_dl_grant(grant);
     if (alloc_result.status == alloc_status::success) {

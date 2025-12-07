@@ -38,7 +38,7 @@ ue_cell_grid_allocator::ue_cell_grid_allocator(const scheduler_ue_expert_config&
                                                ue_repository&                    ues_,
                                                srslog::basic_logger&             logger_,
                                                dl_scheduler_trace_manager*       trace_mgr_) :
-  expert_cfg(expert_cfg_), ues(ues_), logger(logger_), trace_mgr(trace_mgr_)
+  expert_cfg(expert_cfg_), ues(ues_), logger(logger_)/*, trace_mgr(trace_mgr_)*/
 {
 }
 
@@ -366,6 +366,7 @@ alloc_result ue_cell_grid_allocator::allocate_dl_grant(const ue_pdsch_grant& gra
       mcs_tbs_info = compute_dl_mcs_tbs(pdsch_cfg, adjusted_mcs, crbs.length(), contains_dc);
       
       // Check if we should limit TBS based on trace
+      /*
       if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
         std::optional<dl_scheduler_trace_sample> trace_sample = trace_mgr->get_trace_sample(pdsch_alloc.slot);
         
@@ -394,6 +395,7 @@ alloc_result ue_cell_grid_allocator::allocate_dl_grant(const ue_pdsch_grant& gra
           }
         }
       }
+      */
     } else {
       // It is a retx.
       mcs_tbs_info.emplace(sch_mcs_tbs{.mcs = h_dl->get_grant_params().mcs, .tbs = h_dl->get_grant_params().tbs_bytes});
