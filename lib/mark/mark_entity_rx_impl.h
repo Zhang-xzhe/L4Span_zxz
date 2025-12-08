@@ -74,9 +74,9 @@ public:
             if (front_pkt.end_seq_num <= ack_num) {
               // Calculate RTT for this packet
               int64_t rtt_us = ts_us - front_pkt.tx_timestamp_us;
-              logger.log_debug("TCP ACK received: seq={}, ack={}, payload_len={}, RTT={} us, ECN={}, flow={}", 
+              logger.log_debug("TCP ACK received: seq={}, ack={}, payload_len={}, RTT={} us, flow={}", 
                               front_pkt.seq_num, ack_num, front_pkt.payload_len, 
-                              rtt_us, front_pkt.ecn_mark, pkt_five_tuple);
+                              rtt_us, pkt_five_tuple);
               
               flow_track.in_flight_packets.pop_front();
               flow_track.total_packets_acked++;

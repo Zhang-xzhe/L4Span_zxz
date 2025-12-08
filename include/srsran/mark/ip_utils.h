@@ -185,6 +185,7 @@ struct tcp_packet_info {
   uint16_t ip_total_len;         ///< Total IP packet length
   int64_t  tx_timestamp_us;      ///< Transmission timestamp in microseconds
   bool     is_retransmission;    ///< Whether this is a retransmission
+  bool    fake_acked;          ///< Whether this packet was fake-acked
   
   std::vector<uint8_t> packet_data;  ///< Complete IP packet copy (for deep inspection or retransmission)
   
@@ -194,16 +195,14 @@ struct tcp_packet_info {
     payload_len(0),
     ip_total_len(0),
     tx_timestamp_us(0),
-    ecn_mark(0),
     is_retransmission(false) {}
-    
-  tcp_packet_info(uint32_t seq, uint16_t len, uint16_t ip_len, int64_t ts, uint8_t ecn) :
+
+  tcp_packet_info(uint32_t seq, uint16_t len, uint16_t ip_len, int64_t ts) :
     seq_num(seq),
     end_seq_num(seq + len),
     payload_len(len),
     ip_total_len(ip_len),
     tx_timestamp_us(ts),
-    ecn_mark(ecn),
     is_retransmission(false) {}
 };
 
