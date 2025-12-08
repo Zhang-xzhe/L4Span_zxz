@@ -126,7 +126,7 @@ public:
         auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
         tcp_hdr->check = sum;
         ip::swap_tcphdr(tcp_hdr);
-        memcpy((*pdu_it).data()+sizeof(iphdr), tcp_hdr, sizeof(tcphdr));
+        // memcpy((*pdu_it).data()+sizeof(iphdr), tcp_hdr, sizeof(tcphdr));
         // logger.log_debug("Compute TCP checksum {}, actual checksum {}", 
         //   ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data()),
         //   (uint16_t)tcp_hdr->check);
@@ -150,7 +150,7 @@ public:
         //     drb_flow_state[drb_id].have_classic) {
         //   // logger.log_debug("Classic flow in hybrid DRB, TBD");
         // }
-        
+        //return;
       } else if (ipv4_hdr->protocol == 17) {
         memcpy(udp_hdr, (*pdu_it).data()+sizeof(iphdr), sizeof(udphdr));
         ip::swap_udphdr(udp_hdr);
