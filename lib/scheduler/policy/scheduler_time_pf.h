@@ -95,7 +95,7 @@ private:
   /// \brief Attempts to allocate PDSCH for a UE.
   /// \return Returns allocation status, nof. allocated bytes and nof. allocated RBs.
   alloc_result
-  try_dl_alloc(ue_ctxt& ctxt, const slice_ue_repository& ues, ue_pdsch_allocator& pdsch_alloc, unsigned max_rbs);
+  try_dl_alloc(ue_ctxt& ctxt, const slice_ue_repository& ues, ue_pdsch_allocator& pdsch_alloc, const ue_resource_grid_view& res_grid, unsigned max_rbs);
   /// \brief Attempts to allocate PUSCH for a UE.
   /// \return Returns allocation status, nof. allocated bytes and nof. allocated RBs.
   alloc_result

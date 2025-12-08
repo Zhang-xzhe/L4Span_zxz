@@ -115,6 +115,12 @@ public:
     return result;
   }
 
+  /// Get access to the trace manager for trace-based scheduling
+  dl_scheduler_trace_manager* get_trace_manager() const
+  {
+    return pdsch_alloc.trace_mgr;
+  }
+
 private:
   ue_cell_grid_allocator& pdsch_alloc;
   dl_ran_slice_candidate& slice_candidate;
