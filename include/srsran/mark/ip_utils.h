@@ -212,11 +212,13 @@ struct tcp_flow_tracking {
   uint32_t last_ack_received = 0;                 ///< Last ACK number received
   uint32_t last_fake_ack = 0;                     ///< Last fake ACK number sent
   uint32_t next_expected_seq = 0;                 ///< Next expected sequence number for TX
+  uint32_t last_rx_seq = 0;                       ///< Last received sequence number for RX tracking
   size_t   total_packets_sent = 0;                ///< Total packets transmitted
   size_t   total_packets_acked = 0;               ///< Total packets acknowledged
   size_t   total_retransmissions = 0;             ///< Total retransmissions
   int64_t  last_tx_timestamp_us = 0;              ///< Last transmission timestamp
   int64_t  last_ack_timestamp_us = 0;             ///< Last ACK timestamp
+  int64_t  last_rx_timestamp_us = 0;              ///< Last reception timestamp
   
   /// Calculate average RTT from recent ACKs
   double get_avg_rtt_ms() const {
