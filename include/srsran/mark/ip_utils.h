@@ -184,7 +184,6 @@ struct tcp_packet_info {
   uint16_t payload_len;          ///< Payload length in bytes
   uint16_t ip_total_len;         ///< Total IP packet length
   int64_t  tx_timestamp_us;      ///< Transmission timestamp in microseconds
-  uint8_t  ecn_mark;             ///< ECN marking (0=Not-ECT, 1=ECT(1), 2=ECT(0), 3=CE)
   bool     is_retransmission;    ///< Whether this is a retransmission
   
   std::vector<uint8_t> packet_data;  ///< Complete IP packet copy (for deep inspection or retransmission)
@@ -212,6 +211,7 @@ struct tcp_packet_info {
 struct tcp_flow_tracking {
   std::deque<tcp_packet_info> in_flight_packets;  ///< Queue of unacknowledged packets
   uint32_t last_ack_received = 0;                 ///< Last ACK number received
+  uint32_t last_fake_ack = 0;                     ///< Last fake ACK number sent
   uint32_t next_expected_seq = 0;                 ///< Next expected sequence number for TX
   size_t   total_packets_sent = 0;                ///< Total packets transmitted
   size_t   total_packets_acked = 0;               ///< Total packets acknowledged

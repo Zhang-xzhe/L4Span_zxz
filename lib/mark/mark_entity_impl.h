@@ -70,130 +70,33 @@ public:
     tmp_string << std::hex << std::setfill('0');
     while (sdu_it != sdu.segments().end()) 
     {
-      // for (unsigned int buffer_i = 0; buffer_i < (*sdu_it).size(); buffer_i++) {
-      //   tmp_string << std::hex << std::setw(2) << static_cast<int>((*sdu_it).data()[buffer_i]);
-      // }
+      // Extract IP header and TCP/UDP header
       drb_id_t drb_id = qfi_to_drb[qos_flow_id];
       iphdr* ipv4_hdr = (iphdr*)malloc(sizeof(iphdr));
       memcpy(ipv4_hdr, (*sdu_it).data(), sizeof(iphdr));
       ip::swap_iphdr(ipv4_hdr);
-
       ip::five_tuple pkt_five_tuple = {};
-
-      // logger.log_debug("IP header version {}, ihl {}, tos {}, total length {},"
-      //                  " id {}, protocol {}, src_addr {}, dst_addr {}", 
-      //                  (uint8_t)ipv4_hdr->version,
-      //                  (uint8_t)ipv4_hdr->ihl,
-      //                  (uint8_t)ipv4_hdr->tos,
-      //                  ipv4_hdr->tot_len,
-      //                  ipv4_hdr->id,
-      //                  (uint8_t)ipv4_hdr->protocol,
-      //                  ipv4_hdr->saddr,
-      //                  ipv4_hdr->daddr);
-
       if (ipv4_hdr->protocol == 6) {
         tcphdr* tcp_hdr = (tcphdr*)malloc(sizeof(tcphdr));
         memcpy(tcp_hdr, (*sdu_it).data()+sizeof(iphdr), sizeof(tcphdr));
         ip::swap_tcphdr(tcp_hdr);
-
         pkt_five_tuple = ip::extract_five_tuple(*ipv4_hdr, *tcp_hdr);
-        // logger.log_debug("TCP header source {}, dst {}, seq {}, ack seq {}, "
-        //                  "offset {}, cwr {}, ece {}, urg {}, ack {}, psh {}, "
-        //                  "rst {}, syn {}, fin {}, window {}, checksum {}, urg_ptr {}", 
-        //                  tcp_hdr->source,
-        //                  tcp_hdr->dest,
-        //                  tcp_hdr->seq,
-        //                  tcp_hdr->ack_seq,
-        //                  (uint8_t)tcp_hdr->doff,
-        //                  (uint8_t)tcp_hdr->cwr,
-        //                  (uint8_t)tcp_hdr->ece,
-        //                  (uint8_t)tcp_hdr->urg,
-        //                  (uint8_t)tcp_hdr->ack,
-        //                  (uint8_t)tcp_hdr->psh,
-        //                  (uint8_t)tcp_hdr->rst,
-        //                  (uint8_t)tcp_hdr->syn,
-        //                  (uint8_t)tcp_hdr->fin,
-        //                  tcp_hdr->window,
-        //                  tcp_hdr->check,
-        //                  tcp_hdr->urg_ptr); 
 
         // Flow mapping: map 5 tuples of IP/TCP flow to DRB id.
         rx.get()->five_tuple_to_drb[pkt_five_tuple].drb_id = drb_id;
-
-        if (!(uint8_t)tcp_hdr->syn){
-          if (rx.get()->five_tuple_to_rtt[pkt_five_tuple].ingress_of_second == 0 && 
-              rx.get()->five_tuple_to_rtt[pkt_five_tuple].ingress_of_syn != 0) {
-            rx.get()->five_tuple_to_rtt[pkt_five_tuple].estimated_rtt = 
-              rx.get()->five_tuple_to_rtt[pkt_five_tuple].ingress_of_second - 
-              rx.get()->five_tuple_to_rtt[pkt_five_tuple].ingress_of_syn;
-          }
-          // Skip the SYN == 1 packet
-          uint8_t ect = ipv4_hdr->tos & ip::INET_ECN_MASK;
-          if (ect == ip::INET_ECN_ECT_1){
-            // L4S, perform mark
-            // logger.log_debug("L4S flow, drb {}, marking prob {}", drb_id, rx.get()->drb_flow_state[drb_id].mark_l4s);
-            if (rand() < rx.get()->drb_flow_state[drb_id].mark_l4s) {
-
-              // Do the downlink packet marking
-              // rx.get()->perform_ip_mark((*sdu_it).data(), ipv4_hdr, drb_id, pkt_five_tuple);
-
-              // Save the marking information and mark the uplink ACK instead
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ce += 1;
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ce += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4; 
-
-              // rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ecn1 += 1;
-              // rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ecn1 += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4;
-
-            } else {
-              // Update the packet flow information
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ecn1 += 1;
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ecn1 += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4;
-            }
-          } else if (ect == ip::INET_ECN_ECT_0){
-            
-            // logger.log_debug("Classic flow, drb {}, marking prob {}", drb_id, rx.get()->drb_flow_state[drb_id].mark_classic);
-            if (rand() < rx.get()->drb_flow_state[drb_id].mark_classic) {
-              // Do the downlink packet marking
-              // rx.get()->perform_ip_mark((*sdu_it).data(), ipv4_hdr, drb_id, pkt_five_tuple);
-              
-              // Save the marking information and mark the uplink ACK instead
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ce += 1;
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ce += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4; 
-
-              // rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ecn0 += 1;
-              // rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ecn0 += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4;     
-            } else {
-              // Update the packet flow information
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ecn0 += 1;
-              rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ecn0 += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4;
-            }
-          } else if (ect == ip::INET_ECN_CE){
-            // The packet is already marked by other hops in the network
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ce += 1;
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ce += ipv4_hdr->tot_len - sizeof(iphdr) - tcp_hdr->doff * 4;
-          } else {
-            // The packet is non-ECT flow, drop as a feedback
-            if (rand() < rx.get()->drb_flow_state[drb_id].mark_classic) {
-              // return;
-            }
-          }
-        } else {
-          // During the TCP handshake, we don't mark
-          rx.get()->five_tuple_to_rtt[pkt_five_tuple].ingress_of_syn = ts.count();
-        }
         
         // Track TCP packets with payload for in-flight monitoring
         uint16_t tcp_payload_len = ipv4_hdr->tot_len - sizeof(iphdr) - (tcp_hdr->doff * 4);
         if (tcp_payload_len > 0 && !(uint8_t)tcp_hdr->syn && !(uint8_t)tcp_hdr->rst) {
           // Only track data packets (not pure ACKs, SYN, or RST)
-          uint8_t ect = ipv4_hdr->tos & ip::INET_ECN_MASK;
-          ip::tcp_packet_info pkt_info(tcp_hdr->seq, tcp_payload_len, ipv4_hdr->tot_len, ts.count(), ect);
+          ip::tcp_packet_info pkt_info(tcp_hdr->seq, tcp_payload_len, ipv4_hdr->tot_len, ts.count());
+          pkt_info.fake_acked = false;  // Initialize fake_acked flag
           
           // Copy the complete IP packet data for potential retransmission or deep inspection
           pkt_info.packet_data.resize(ipv4_hdr->tot_len);
           memcpy(pkt_info.packet_data.data(), (*sdu_it).data(), ipv4_hdr->tot_len);
           
-          // Check if this is a retransmission
+          // Check if this is a retransmission, This is generated by AI, may need further optimization, ZXZ
           auto& flow_track = rx.get()->tcp_flow_tracking[pkt_five_tuple];
           for (const auto& in_flight_pkt : flow_track.in_flight_packets) {
             if (tcp_hdr->seq == in_flight_pkt.seq_num) {
@@ -203,13 +106,13 @@ public:
               break;
             }
           }
-          
+
           // Add to in-flight queue
           flow_track.in_flight_packets.push_back(std::move(pkt_info));
           flow_track.total_packets_sent++;
           flow_track.last_tx_timestamp_us = ts.count();
           flow_track.next_expected_seq = tcp_hdr->seq + tcp_payload_len;
-          
+          // Important Log1 ZXZ
           logger.log_debug("TX TCP packet tracked: seq={}, len={}, pkt_size={}, in_flight={}, flow={}", 
                           tcp_hdr->seq, tcp_payload_len, ipv4_hdr->tot_len,
                           flow_track.get_packets_in_flight(), pkt_five_tuple);
@@ -224,40 +127,9 @@ public:
         ip::swap_udphdr(udp_hdr);
         pkt_five_tuple = ip::extract_five_tuple(*ipv4_hdr, *udp_hdr);
 
-        // logger.log_debug("UDP header source {}, dst {}, len {}, check {}", 
-        //                  udp_hdr->source,
-        //                  udp_hdr->dest,
-        //                  udp_hdr->len,
-        //                  udp_hdr->check); 
-
         // Flow mapping: map 5 tuples of IP/TCP flow to DRB id.
         rx.get()->five_tuple_to_drb[pkt_five_tuple].drb_id = drb_id;
 
-        uint8_t ect = ipv4_hdr->tos & ip::INET_ECN_MASK;
-        if (ect == ip::INET_ECN_ECT_1){
-          if (rand() < rx.get()->drb_flow_state[drb_id].mark_l4s) {
-            rx.get()->perform_ip_mark((*sdu_it).data(), ipv4_hdr, drb_id, pkt_five_tuple);
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ce += 1;
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ce += ipv4_hdr->tot_len - sizeof(iphdr) - sizeof(udphdr); 
-          } else {
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ecn1 += 1;
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ecn1 += ipv4_hdr->tot_len - sizeof(iphdr) - sizeof(udphdr);  
-          }
-        }
-        if (ect == ip::INET_ECN_ECT_0){
-          if (rand() < rx.get()->drb_flow_state[drb_id].mark_classic) {
-            rx.get()->perform_ip_mark((*sdu_it).data(), ipv4_hdr, drb_id, pkt_five_tuple);
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ce += 1;
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ce += ipv4_hdr->tot_len - sizeof(iphdr) - sizeof(udphdr); 
-          } else {
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ecn0 += 1;
-            rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ecn0 += ipv4_hdr->tot_len - sizeof(iphdr) - sizeof(udphdr);
-          } 
-        }
-        if (ect == ip::INET_ECN_CE){
-          rx.get()->five_tuple_to_drb[pkt_five_tuple].pkts_with_ce += 1;
-          rx.get()->five_tuple_to_drb[pkt_five_tuple].bytes_with_ce += ipv4_hdr->tot_len - sizeof(iphdr) - sizeof(udphdr);
-        }
         // Insert the packet into the DRB queue
         drb_queue_update(*ipv4_hdr, drb_id, ts, pkt_five_tuple);
         update_drb_flow_state_udp(*ipv4_hdr, *udp_hdr, drb_id, ts);
@@ -265,10 +137,8 @@ public:
         // Insert the packet into the DRB queue
         drb_queue_update(*ipv4_hdr, drb_id, ts, pkt_five_tuple);
       }
-      // logger.log_debug("IP Packet {}", tmp_string.str());
       sdu_it ++;
     }
-    // logger.log_info("Finished TX PDU. pdu_len={}, qfi={}", sdu.length(), qos_flow_id);
     tx.get()->handle_sdu(std::move(sdu), qos_flow_id);
   }
 
@@ -777,6 +647,7 @@ public:
     int64_t  tx_timestamp_us;
     uint8_t  ecn_mark;
     bool     is_retransmission;
+    bool     fake_acked;  // 标记此包是否已被fake ACK过
     
     // 添加完整包的副本
     byte_buffer packet_copy;  // 存储整个 IP 包的副本
@@ -896,10 +767,9 @@ public:
     
     // Iterate through all TCP flows and check if we need to generate ACKs
     for (auto& [five_tuple, flow_track] : rx->tcp_flow_tracking) {
-      // Check if there are acknowledged packets we should generate ACKs for
-      // Only generate ACK if we have actually received and ACKed packets
-      if (flow_track.total_packets_acked > 0 && 
-          flow_track.last_ack_received > 0) {
+      // Check if there are new packets
+      if (
+          flow_track.last_fake_ack < flow_track.next_expected_seq) {
         
         // Find the QFI for this flow
         auto drb_it = rx->five_tuple_to_drb.find(five_tuple);
@@ -926,9 +796,24 @@ public:
           continue;
         }
         
-        // Generate our sequence number (simplified: use a counter or fixed value)
+        // Generate our sequence number using the first un-fake-acked packet's sequence number in the queue
         // In real implementation, should track our own seq numbers per flow
-        uint32_t our_seq_num = flow_track.last_ack_received;  // Simplified
+        uint32_t our_seq_num = 0;  // Default value
+        bool found_unfaked_packet = false;
+        for (auto& pkt : flow_track.in_flight_packets) {
+          if (!pkt.fake_acked) {
+            our_seq_num = pkt.seq_num;
+            pkt.fake_acked = true;  // Mark this packet as fake ACKed
+            found_unfaked_packet = true;
+            flow_track.last_fake_ack = our_seq_num;
+            break;
+          }
+        }
+        
+        // If no unfaked packets found, skip generating ACK
+        if (!found_unfaked_packet) {
+          continue;
+        }
         
         // Construct TCP ACK packet
         byte_buffer ack_packet = construct_tcp_ack(
