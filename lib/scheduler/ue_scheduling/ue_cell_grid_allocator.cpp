@@ -365,35 +365,35 @@ alloc_result ue_cell_grid_allocator::allocate_dl_grant(const ue_pdsch_grant& gra
 
       mcs_tbs_info = compute_dl_mcs_tbs(pdsch_cfg, adjusted_mcs, crbs.length(), contains_dc);
       
-      // Check if we should limit TBS based on trace
-      if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
-        std::optional<dl_scheduler_trace_sample> trace_sample = trace_mgr->get_trace_sample(pdsch_alloc.slot);
+    //   // Check if we should limit TBS based on trace
+    //   if (trace_mgr != nullptr && trace_mgr->is_enabled()) {
+    //     std::optional<dl_scheduler_trace_sample> trace_sample = trace_mgr->get_trace_sample(pdsch_alloc.slot);
         
-        if (trace_sample.has_value() && mcs_tbs_info.has_value()) {
-          // Compare normal TBS with trace TBS, use the smaller one
-          if (mcs_tbs_info->tbs > trace_sample->tbs) {
-            unsigned original_tbs = mcs_tbs_info->tbs;
-            mcs_tbs_info->tbs = trace_sample->tbs;
+    //     if (trace_sample.has_value() && mcs_tbs_info.has_value()) {
+    //       // Compare normal TBS with trace TBS, use the smaller one
+    //       if (mcs_tbs_info->tbs > trace_sample->tbs) {
+    //         unsigned original_tbs = mcs_tbs_info->tbs;
+    //         mcs_tbs_info->tbs = trace_sample->tbs;
             
-            logger.debug("ue={} rnti={}: TBS limited by trace: normal_TBS={} > trace_TBS={}, using trace_TBS={} with normal_MCS={} (slot={})",
-                         u.ue_index,
-                         u.crnti,
-                         original_tbs,
-                         trace_sample->tbs,
-                         mcs_tbs_info->tbs,
-                         mcs_tbs_info->mcs.to_uint(),
-                         pdsch_alloc.slot);
-          } else {
-            logger.debug("ue={} rnti={}: Using normal TBS={} (trace_TBS={}, MCS={}, slot={})",
-                         u.ue_index,
-                         u.crnti,
-                         mcs_tbs_info->tbs,
-                         trace_sample->tbs,
-                         mcs_tbs_info->mcs.to_uint(),
-                         pdsch_alloc.slot);
-          }
-        }
-      }
+    //         logger.debug("ue={} rnti={}: TBS limited by trace: normal_TBS={} > trace_TBS={}, using trace_TBS={} with normal_MCS={} (slot={})",
+    //                      u.ue_index,
+    //                      u.crnti,
+    //                      original_tbs,
+    //                      trace_sample->tbs,
+    //                      mcs_tbs_info->tbs,
+    //                      mcs_tbs_info->mcs.to_uint(),
+    //                      pdsch_alloc.slot);
+    //       } else {
+    //         logger.debug("ue={} rnti={}: Using normal TBS={} (trace_TBS={}, MCS={}, slot={})",
+    //                      u.ue_index,
+    //                      u.crnti,
+    //                      mcs_tbs_info->tbs,
+    //                      trace_sample->tbs,
+    //                      mcs_tbs_info->mcs.to_uint(),
+    //                      pdsch_alloc.slot);
+    //       }
+    //     }
+    //   }
     } else {
       // It is a retx.
       mcs_tbs_info.emplace(sch_mcs_tbs{.mcs = h_dl->get_grant_params().mcs, .tbs = h_dl->get_grant_params().tbs_bytes});

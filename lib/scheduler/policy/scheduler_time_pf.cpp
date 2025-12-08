@@ -147,7 +147,7 @@ alloc_result scheduler_time_pf::try_dl_alloc(ue_ctxt&                   ctxt,
   if (ctxt.has_empty_dl_harq) {
     grant.h_id                  = INVALID_HARQ_ID;
     grant.recommended_nof_bytes = ues[ctxt.ue_index].pending_dl_newtx_bytes();
-    
+    printf("here\n");
     // Override with trace data if available
     auto* slice_alloc = dynamic_cast<dl_slice_ue_cell_grid_allocator*>(&pdsch_alloc);
     if (slice_alloc != nullptr) {
