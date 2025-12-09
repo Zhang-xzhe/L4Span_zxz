@@ -26,29 +26,34 @@ class PDSCHTraceParser:
     def __init__(self):
         # Regular expressions for different log patterns
         self.patterns = {
-            # MAC scheduler PDSCH allocation
-            'mac_pdsch': re.compile(
-                r'.*MAC.*PDSCH.*slot=(\d+).*ue=(\w+).*mcs=(\d+).*tbs=(\d+).*'
+            # srsRAN UE PDSCH format: "- UE PDSCH: ue=0 c-rnti=0x4601 h_id=0 rb=[...] tbs=309 mcs=7 rv=0 nrtx=0"
+            'srsran_ue_pdsch': re.compile(
+                r'- UE PDSCH: ue=(\d+) c-rnti=(0x[\da-fA-F]+) h_id=(\d+).*?tbs=(\d+) mcs=(\d+) rv=(\d+) nrtx=(\d+)'
             ),
             
-            # PHY PDSCH transmission
-            'phy_pdsch': re.compile(
-                r'.*PHY.*PDSCH.*slot=(\d+).*ue=(\w+).*mcs=(\d+).*tbs=(\d+).*harq_id=(\d+).*'
+            # srsRAN PHY PDSCH format: "PDSCH: rnti=0x4601 h_id=0 k1=4 prb=[...] tbs=309"
+            'srsran_phy_pdsch': re.compile(
+                r'\[PHY\s+\].*PDSCH: rnti=(0x[\da-fA-F]+) h_id=(\d+).*?tbs=(\d+)'
             ),
             
-            # HARQ acknowledgment/retransmission
-            'harq_ack': re.compile(
-                r'.*HARQ.*slot=(\d+).*ue=(\w+).*harq_id=(\d+).*ack=(0|1).*'
+            # RAR PDSCH format: "- RAR PDSCH: ra-rnti=0x10b rb=[...] tbs=9 mcs=0"
+            'srsran_rar_pdsch': re.compile(
+                r'- RAR PDSCH: ra-rnti=(0x[\da-fA-F]+).*?tbs=(\d+) mcs=(\d+)'
             ),
             
-            # Alternative MAC format with different field order
-            'mac_alt': re.compile(
-                r'.*scheduler.*dl.*slot=(\d+).*rnti=(\w+).*mcs=(\d+).*tbs_bytes=(\d+).*harq=(\d+).*'
+            # Slot extraction from timestamp or slot indicators
+            'slot_indicator': re.compile(
+                r'\[\s*(\d+)\.(\d+)\]'  # [slot.subframe] format
+            ),
+            
+            # Alternative slot format in srsRAN
+            'srsran_slot': re.compile(
+                r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+).*?\[\s*(\d+)\.(\d+)\]'
             ),
             
             # Generic PDSCH pattern - more flexible
             'generic_pdsch': re.compile(
-                r'.*slot[=:\s]+(\d+).*(?:ue|rnti|UE)[=:\s]+(\w+).*mcs[=:\s]+(\d+).*tbs[=:\s_]*(\d+)(?:.*harq[=:\s_]*(\d+))?'
+                r'.*(?:ue|UE)[=:\s]+(\d+).*?(?:rnti|RNTI)[=:\s]+(0x[\da-fA-F]+).*?(?:tbs|TBS)[=:\s]+(\d+).*?(?:mcs|MCS)[=:\s]+(\d+)'
             )
         }
         
@@ -57,20 +62,48 @@ class PDSCHTraceParser:
             'tbs': None,
             'harq_id': None,
             'ue_id': None,
+            'rnti': None,
             'retx_count': 0,
             'ack_received': None
         })
         
         self.parsed_count = 0
+        self.current_slot = 0
+        
+    def extract_slot_from_line(self, line):
+        """Extract slot number from srsRAN log line."""
+        # Try to find slot in format [slot.subframe]
+        match = self.patterns['slot_indicator'].search(line)
+        if match:
+            slot = int(match.group(1))
+            subframe = int(match.group(2))
+            # Convert to absolute slot (10 slots per frame, assuming 10ms frame)
+            return slot
+        
+        # Try timestamp + slot format
+        match = self.patterns['srsran_slot'].search(line)
+        if match:
+            slot = int(match.group(2))
+            return slot
+            
+        return self.current_slot  # Use last known slot
         
     def parse_line(self, line):
         """Parse a single log line and extract PDSCH information."""
         line = line.strip()
         if not line or line.startswith('#'):
             return None
+        
+        # Update current slot from line
+        slot = self.extract_slot_from_line(line)
+        if slot != self.current_slot:
+            self.current_slot = slot
             
         # Try each pattern
         for pattern_name, pattern in self.patterns.items():
+            if pattern_name in ['slot_indicator', 'srsran_slot']:
+                continue  # Skip slot extraction patterns
+                
             match = pattern.search(line)
             if match:
                 return self._extract_data(match, pattern_name, line)
@@ -80,65 +113,61 @@ class PDSCHTraceParser:
     def _extract_data(self, match, pattern_name, line):
         """Extract data based on the matched pattern."""
         try:
-            if pattern_name == 'mac_pdsch':
-                slot, ue_id, mcs, tbs = match.groups()
+            if pattern_name == 'srsran_ue_pdsch':
+                # "- UE PDSCH: ue=0 c-rnti=0x4601 h_id=0 rb=[...] tbs=309 mcs=7 rv=0 nrtx=0"
+                ue_id, rnti, harq_id, tbs, mcs, rv, nrtx = match.groups()
                 return {
-                    'slot': int(slot),
-                    'ue_id': ue_id,
-                    'mcs': int(mcs),
-                    'tbs': int(tbs),
-                    'harq_id': None,
-                    'type': 'pdsch'
-                }
-                
-            elif pattern_name == 'phy_pdsch':
-                slot, ue_id, mcs, tbs, harq_id = match.groups()
-                return {
-                    'slot': int(slot),
-                    'ue_id': ue_id,
+                    'slot': self.current_slot,
+                    'ue_id': int(ue_id),
+                    'rnti': rnti,
                     'mcs': int(mcs),
                     'tbs': int(tbs),
                     'harq_id': int(harq_id),
+                    'rv': int(rv),
+                    'nrtx': int(nrtx),
                     'type': 'pdsch'
                 }
                 
-            elif pattern_name == 'harq_ack':
-                slot, ue_id, harq_id, ack = match.groups()
+            elif pattern_name == 'srsran_phy_pdsch':
+                # "[PHY] PDSCH: rnti=0x4601 h_id=0 k1=4 prb=[...] tbs=309"
+                rnti, harq_id, tbs = match.groups()
                 return {
-                    'slot': int(slot),
-                    'ue_id': ue_id,
-                    'harq_id': int(harq_id),
-                    'ack': int(ack),
-                    'type': 'harq'
-                }
-                
-            elif pattern_name == 'mac_alt':
-                slot, rnti, mcs, tbs, harq_id = match.groups()
-                return {
-                    'slot': int(slot),
-                    'ue_id': rnti,
-                    'mcs': int(mcs),
+                    'slot': self.current_slot,
+                    'rnti': rnti,
                     'tbs': int(tbs),
                     'harq_id': int(harq_id),
-                    'type': 'pdsch'
+                    'type': 'phy_pdsch'
+                }
+                
+            elif pattern_name == 'srsran_rar_pdsch':
+                # "- RAR PDSCH: ra-rnti=0x10b rb=[...] tbs=9 mcs=0"
+                rnti, tbs, mcs = match.groups()
+                return {
+                    'slot': self.current_slot,
+                    'rnti': rnti,
+                    'tbs': int(tbs),
+                    'mcs': int(mcs),
+                    'type': 'rar_pdsch'
                 }
                 
             elif pattern_name == 'generic_pdsch':
+                # Generic pattern fallback
                 groups = match.groups()
-                slot = int(groups[0])
-                ue_id = groups[1]
-                mcs = int(groups[2])
-                tbs = int(groups[3])
-                harq_id = int(groups[4]) if groups[4] else None
-                
-                return {
-                    'slot': slot,
-                    'ue_id': ue_id,
-                    'mcs': mcs,
-                    'tbs': tbs,
-                    'harq_id': harq_id,
-                    'type': 'pdsch'
-                }
+                if len(groups) >= 4:
+                    ue_id = int(groups[0])
+                    rnti = groups[1]
+                    tbs = int(groups[2])
+                    mcs = int(groups[3])
+                    
+                    return {
+                        'slot': self.current_slot,
+                        'ue_id': ue_id,
+                        'rnti': rnti,
+                        'mcs': mcs,
+                        'tbs': tbs,
+                        'harq_id': None,
+                        'type': 'pdsch'
+                    }
                 
         except (ValueError, IndexError) as e:
             print(f"Warning: Failed to parse line: {line[:100]}... Error: {e}")
@@ -163,19 +192,37 @@ class PDSCHTraceParser:
                     slot = data['slot']
                     
                     if data['type'] == 'pdsch':
-                        # Store PDSCH transmission data
+                        # Store PDSCH transmission data from UE PDSCH logs
                         self.slot_data[slot].update({
-                            'mcs': data['mcs'],
-                            'tbs': data['tbs'],
+                            'mcs': data.get('mcs'),
+                            'tbs': data.get('tbs'),
                             'harq_id': data.get('harq_id', slot % 8),  # Default HARQ ID
-                            'ue_id': data['ue_id']
+                            'ue_id': data.get('ue_id'),
+                            'rnti': data.get('rnti'),
+                            'nrtx': data.get('nrtx', 0)  # Number of retransmissions
                         })
                         
+                    elif data['type'] == 'rar_pdsch':
+                        # Store RAR PDSCH data (usually for initial access)
+                        self.slot_data[slot].update({
+                            'mcs': data.get('mcs'),
+                            'tbs': data.get('tbs'),
+                            'harq_id': 0,  # RAR typically uses HARQ ID 0
+                            'rnti': data.get('rnti'),
+                            'nrtx': 0,
+                            'type': 'rar'
+                        })
+                        
+                    elif data['type'] == 'phy_pdsch':
+                        # PHY layer confirmation - can be used to validate MAC layer data
+                        if slot in self.slot_data and not self.slot_data[slot]['tbs']:
+                            self.slot_data[slot]['tbs'] = data.get('tbs')
+                        
                     elif data['type'] == 'harq':
-                        # Process HARQ feedback
-                        if data['ack'] == 0:  # NACK - retransmission needed
+                        # Process HARQ feedback (if present)
+                        if data.get('ack') == 0:  # NACK - retransmission needed
                             self.slot_data[slot]['retx_count'] += 1
-                        self.slot_data[slot]['ack_received'] = data['ack']
+                        self.slot_data[slot]['ack_received'] = data.get('ack')
         
         print(f"Finished processing {line_count} lines")
         print(f"Found {self.parsed_count} PDSCH-related entries")
@@ -209,7 +256,9 @@ class PDSCHTraceParser:
                     mcs = data['mcs']
                     tbs = data['tbs']
                     harq_id = data['harq_id'] if data['harq_id'] is not None else slot % 8
-                    retx_count = data['retx_count']
+                    
+                    # Use nrtx if available, otherwise retx_count
+                    retx_count = data.get('nrtx', data.get('retx_count', 0))
                     needs_retx = 1 if retx_count > 0 else 0
                     
                     writer.writerow([slot, mcs, tbs, needs_retx, retx_count, harq_id])
@@ -281,6 +330,58 @@ class PDSCHTraceParser:
         retx_slots = [slot for slot, data in self.slot_data.items() if data['retx_count'] > 0]
         print(f"Slots with retransmissions: {len(retx_slots)}")
 
+    def debug_parse_sample(self, input_file, num_lines=100):
+        """Debug function to show parsing results for first few lines."""
+        print(f"=== DEBUG MODE: Analyzing first {num_lines} lines ===")
+        
+        line_count = 0
+        found_patterns = {}
+        
+        with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line_count += 1
+                if line_count > num_lines:
+                    break
+                    
+                # Check each pattern
+                for pattern_name, pattern in self.patterns.items():
+                    if pattern_name in ['slot_indicator', 'srsran_slot']:
+                        continue
+                    
+                    if pattern.search(line):
+                        if pattern_name not in found_patterns:
+                            found_patterns[pattern_name] = []
+                        found_patterns[pattern_name].append((line_count, line.strip()[:200]))
+                        
+                # Show slot extraction
+                slot = self.extract_slot_from_line(line)
+                if slot != self.current_slot:
+                    print(f"Line {line_count}: Slot changed to {slot}")
+                    self.current_slot = slot
+                    
+                # Show PDSCH matches
+                data = self.parse_line(line)
+                if data:
+                    print(f"Line {line_count}: FOUND {data['type']} -> {data}")
+        
+        print(f"\n=== Pattern Matches in first {num_lines} lines ===")
+        for pattern_name, matches in found_patterns.items():
+            print(f"{pattern_name}: {len(matches)} matches")
+            for line_num, line_text in matches[:3]:  # Show first 3 matches
+                print(f"  Line {line_num}: {line_text}")
+            if len(matches) > 3:
+                print(f"  ... and {len(matches) - 3} more matches")
+        
+        if not found_patterns:
+            print("No pattern matches found! Checking for common log patterns...")
+            # Show sample lines that might contain relevant data
+            with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
+                for i, line in enumerate(f):
+                    if i > num_lines:
+                        break
+                    if any(keyword in line.lower() for keyword in ['pdsch', 'tbs', 'mcs', 'ue']):
+                        print(f"Line {i+1}: {line.strip()[:200]}")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -297,8 +398,47 @@ def main():
                        help='Maximum slot index to include')
     parser.add_argument('--stats', action='store_true',
                        help='Show detailed parsing statistics')
+    parser.add_argument('--debug', action='store_true',
+                       help='Enable debug mode (analyze first 100 lines)')
+    parser.add_argument('--debug-lines', type=int, default=100,
+                       help='Number of lines to analyze in debug mode')
     parser.add_argument('--output-dir', default='configs/l4span',
                        help='Output directory')
+    
+    args = parser.parse_args()
+    
+    if not os.path.exists(args.input_log):
+        print(f"Error: Input file '{args.input_log}' not found!")
+        return 1
+    
+    # Ensure output directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Create parser instance
+    trace_parser = PDSCHTraceParser()
+    
+    if args.debug:
+        # Debug mode - analyze sample of the file
+        trace_parser.debug_parse_sample(args.input_log, args.debug_lines)
+        return 0
+    
+    # Normal processing
+    trace_parser.process_file(args.input_log)
+    
+    if args.stats:
+        trace_parser.print_stats()
+    
+    # Generate trace file
+    output_path = os.path.join(args.output_dir, args.output)
+    trace_parser.generate_trace(output_path, args.min_slot, args.max_slot)
+    
+    print(f"\n✓ Trace file generated: {output_path}")
+    print(f"\nTo use this trace in L4Span, add to your configuration:")
+    print(f"  dl_scheduler_trace_file: \"{output_path}\"")
+    
+    return 0
+    parser.add_argument('--debug', action='store_true',
+                       help='Enable debug mode for detailed parsing output')
     
     args = parser.parse_args()
     
@@ -309,27 +449,5 @@ def main():
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     output_path = os.path.join(args.output_dir, args.output)
-    
-    # Parse the log file
-    parser = PDSCHTraceParser()
-    parser.process_file(args.input_log)
-    
-    # Show statistics if requested
-    if args.stats:
-        parser.print_stats()
-    
-    # Generate trace file
-    parser.generate_trace(output_path, args.min_slot, args.max_slot)
-    
-    print(f"\n✓ Trace file generated successfully!")
-    print(f"✓ Output: {output_path}")
-    print(f"\nTo use this trace, add to your configuration:")
-    print(f"  dl_scheduler_trace_file: \"{output_path}\"")
-    print(f"\nExample usage:")
-    print(f"  ./gnb -c configs/gnb_config.yml")
-    
-    return 0
-
-
 if __name__ == "__main__":
     exit(main())
