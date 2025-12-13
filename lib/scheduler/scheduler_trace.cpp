@@ -90,33 +90,51 @@ bool dl_scheduler_trace_manager::parse_trace_line(const std::string& line, dl_sc
   int                needs_retx_int;
   int                harq_id_int = -1;
 
-  // Parse format: slot_index, mcs, tbs, needs_retx, retx_count[, harq_id]
-  unsigned mcs_val;
-
-
-  iss >> sample.slot_index >> comma 
-      >> mcs_val >> comma 
-      >> sample.tbs >> comma 
-      >> needs_retx_int >> comma 
-      >> sample.retx_count;
-sample.mcs = sch_mcs_index{static_cast<uint8_t>(mcs_val)};
-
-  if (iss.fail()) {
-    return false;
-  }
-
-  // Optional HARQ ID
-  if (iss >> comma >> harq_id_int) {
-    if (harq_id_int >= 0) {
-      sample.harq_id = to_harq_id(harq_id_int);
+  // Try to detect format by counting commas
+  std::string line_copy = line;
+  size_t comma_count = std::count(line_copy.begin(), line_copy.end(), ',');
+  
+  if (comma_count == 1) {
+    // TBS-only format: slot_index,tbs_bytes
+    iss >> sample.slot_index >> comma >> sample.tbs;
+    
+    if (iss.fail()) {
+      return false;
     }
-  }
+    
+    // Set default values for missing fields
+    sample.mcs = sch_mcs_index{0}; // Will be calculated dynamically
+    sample.needs_retx = false;
+    sample.retx_count = 0;
+    sample.harq_id = std::nullopt;
+    
+  } else {
+    // Full format: slot_index, mcs, tbs, needs_retx, retx_count[, harq_id]
+    unsigned mcs_val;
+    iss >> sample.slot_index >> comma 
+        >> mcs_val >> comma 
+        >> sample.tbs >> comma 
+        >> needs_retx_int >> comma 
+        >> sample.retx_count;
+    sample.mcs = sch_mcs_index{static_cast<uint8_t>(mcs_val)};
 
-  sample.needs_retx = (needs_retx_int != 0);
+    if (iss.fail()) {
+      return false;
+    }
 
-  // Validate values
-  if (sample.mcs > 28) { // Max MCS for PDSCH
-    return false;
+    // Optional HARQ ID
+    if (iss >> comma >> harq_id_int) {
+      if (harq_id_int >= 0) {
+        sample.harq_id = to_harq_id(harq_id_int);
+      }
+    }
+
+    sample.needs_retx = (needs_retx_int != 0);
+    
+    // Validate MCS only for full format
+    if (sample.mcs > 28) { // Max MCS for PDSCH
+      return false;
+    }
   }
 
   if (sample.tbs == 0) {
@@ -142,17 +160,13 @@ dl_scheduler_trace_manager::get_trace_sample(slot_point slot) const
     return std::nullopt;
   }
 
-  // Try to find exact slot match
-  unsigned slot_idx = slot.to_uint() % 10240; // Wrap around SFN range
-  auto it = slot_to_index_.find(slot_idx);
+  // Return the next sample in sequence and advance the index
+  dl_scheduler_trace_sample sample = trace_samples_[current_index_];
   
-  if (it != slot_to_index_.end()) {
-    return trace_samples_[it->second];
-  }
-
-  // If not found, use modulo to cycle through trace
-  size_t index = slot.to_uint() % trace_samples_.size();
-  return trace_samples_[index];
+  // Advance to next sample, wrapping around to beginning if at end
+  current_index_ = (current_index_ + 1) % trace_samples_.size();
+  
+  return sample;
 }
 
 std::optional<dl_scheduler_trace_sample> 

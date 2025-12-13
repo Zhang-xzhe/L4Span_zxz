@@ -67,12 +67,12 @@ public:
         RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha*(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
         if((uint32_t)RWND < 20) {
           tcp_hdr->window = 20; // Minimum RWND
-          printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+          //printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
         }
         else{
           tcp_hdr->window = (uint32_t)RWND;
         }
-        printf("tcp_hdr window size %u\n, after %u\n,Min_RTT %u,Max_throughput %u\n", tcp_hdr->window, (uint32_t)RWND, (uint32_t)Min_RTT, (uint32_t)Max_troughput);
+        //printf("tcp_hdr window size %u\n, after %u\n,Min_RTT %u,Max_throughput %u\n", tcp_hdr->window, (uint32_t)RWND, (uint32_t)Min_RTT, (uint32_t)Max_troughput);
         auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
         tcp_hdr->check = sum;
         ip::swap_tcphdr(tcp_hdr);
