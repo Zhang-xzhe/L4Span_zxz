@@ -38,7 +38,7 @@ ue_cell_grid_allocator::ue_cell_grid_allocator(const scheduler_ue_expert_config&
                                                ue_repository&                    ues_,
                                                srslog::basic_logger&             logger_,
                                                dl_scheduler_trace_manager*       trace_mgr_) :
-  expert_cfg(expert_cfg_), ues(ues_), logger(logger_), trace_mgr(trace_mgr_)
+  expert_cfg(expert_cfg_), ues(ues_), logger(logger_)/*, trace_mgr(trace_mgr_)*/
 {
 }
 

@@ -35,6 +35,9 @@ public:
 
   std::unordered_map<ip::five_tuple, ip::rtt_estimates> five_tuple_to_rtt;
 
+  /// @brief: TCP packet tracking for in-flight packets per flow
+  std::unordered_map<ip::five_tuple, ip::tcp_flow_tracking> tcp_flow_tracking;
+
   /// @brief: flow state inside each DRB, have L4S or classic (TCP/UDP) flows,
   /// as well as the marking decision.
   std::unordered_map<drb_id_t, mark_utils::drb_flow_state> drb_flow_state;
