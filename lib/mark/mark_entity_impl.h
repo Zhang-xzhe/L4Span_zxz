@@ -112,6 +112,7 @@ public:
           flow_track.total_packets_sent++;
           flow_track.last_tx_timestamp_us = ts.count();
           flow_track.next_expected_seq = tcp_hdr->seq + tcp_payload_len;
+          //printf("flow_track.next_expected_seq=%u\n", flow_track.next_expected_seq);
           // Important Log1 ZXZ
           logger.log_debug("TX TCP packet tracked: seq={}, len={}, pkt_size={}, in_flight={}, flow={}", 
                           tcp_hdr->seq, tcp_payload_len, ipv4_hdr->tot_len,
@@ -553,10 +554,10 @@ private:
     }
     drb_pdcp_sn_ts[drb_id].back().standing_queue_size = standing_queue_sz;
     drb_pdcp_sn_ts[drb_id].back().est_queue_delay = standing_queue_sz / drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].pred_dequeue_rate;
-    printf("standing_queue_sz: %.2f, pred_dequeue_rate: %.2f, est_queue_delay: %.2f\n",
-      standing_queue_sz,
-      drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].pred_dequeue_rate,
-      drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].est_queue_delay);
+    //printf("standing_queue_sz: %.2f, pred_dequeue_rate: %.2f, est_queue_delay: %.2f\n",
+      // standing_queue_sz,
+      // drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].pred_dequeue_rate,
+      // drb_pdcp_sn_ts[drb_id][drb_pdcp_sn_ts[drb_id].size()-1].est_queue_delay);
   }
 
   void make_mark_decision(drb_id_t drb_id) 
@@ -713,19 +714,10 @@ public:
     
     // Task 1: Check RLC queue length and sending rate
     check_rlc_queue_and_rate();
-    
+
     // Task 2: Generate TCP ACKs - always check, but prioritize if new data received
-    bool new_data = periodic_stats.new_tcp_data_received.exchange(false);
-    if (new_data) {
-      // Immediate ACK generation for newly received TCP packets
-      generate_tcp_acks();
-    } else {
-      // Regular periodic ACK check (less frequent)
-      if (periodic_stats.total_checks % 10 == 0) {  // Every 10ms for regular checks
-        generate_tcp_acks();
-      }
-    }
-    
+    generate_tcp_acks();
+
     // Log periodically (every 1000 checks = 1 second)
     if (periodic_stats.total_checks % 1000 == 0) {
       logger.log_debug("Periodic stats: checks={}, acks_generated={}", 
@@ -777,20 +769,22 @@ public:
     if (!rx) {
       return;  // RX not initialized yet
     }
-    
+
     // Iterate through all TCP flows and check for received packets that need ACKs
     for (auto& [five_tuple, flow_track] : rx->tcp_flow_tracking) {
       // Check if there are new packets
-      if (
-          flow_track.last_fake_ack < flow_track.next_expected_seq) {
-        
+      
+      if (flow_track.last_fake_ack < flow_track.next_expected_seq) {
+        // printf("flow_track.last=%u, flow_track.next=%u\n",
+        //      flow_track.last_fake_ack,
+        //      flow_track.next_expected_seq);
         // Find the QFI for this flow
         auto drb_it = rx->five_tuple_to_drb.find(five_tuple);
         if (drb_it == rx->five_tuple_to_drb.end()) {
           logger.log_debug("Flow not found in five_tuple_to_drb map for ACK generation");
           continue;
         }
-        
+
         drb_id_t drb_id = drb_it->second.drb_id;
         
         // Find QFI from drb_id (reverse lookup)
@@ -808,11 +802,12 @@ public:
           logger.log_debug("QFI not found for drb_id={}", drb_id);
           continue;
         }
-        
+
         // Generate our sequence number using the first un-fake-acked packet's sequence number in the queue
         // In real implementation, should track our own seq numbers per flow
         uint32_t our_seq_num = 0;  // Default value
         bool found_unfaked_packet = false;
+        //printf("In-flight packets count=%zu\n", flow_track.in_flight_packets.size());
         for (auto& pkt : flow_track.in_flight_packets) {
           if (!pkt.fake_acked) {
             our_seq_num = pkt.seq_num;
@@ -822,34 +817,34 @@ public:
             break;
           }
         }
-        
+        //printf("found_unfaked_packet=%d", found_unfaked_packet);
         // If no unfaked packets found, skip generating ACK
         if (!found_unfaked_packet) {
           continue;
         }
-        
+        //printf("CCCCCCCCCCCCCCCCConstructed TCP ACK packet for flow\n");
         // Construct TCP ACK packet
         byte_buffer ack_packet = construct_tcp_ack(
             five_tuple,
-            ack_num,           // ACK number - acknowledging received data
-            our_seq_num,       // Our SEQ number  
+            our_seq_num,                    // Our sequence number
+            flow_track.last_ack_received,           // ACK number - acknowledging received data 
             periodic_stats.last_check_timestamp_us
         );
-        
+        printf("Constructed TCP ACK packet for flow, our_seq_num=%u, last_ack_received=%u\n", our_seq_num, flow_track.last_ack_received);
         if (ack_packet.length() > 0) {
           logger.log_info("Generating TCP ACK for received data: flow={}, ack_seq={}, our_seq={}, qfi={}", 
                           five_tuple, 
-                          ack_num,
+                          flow_track.last_ack_received,
                           our_seq_num,
                           target_qfi);
           
           // Send the ACK packet as Rx SDU back to GTP-U for forwarding to external network
           // Path: MARK → SDAP → PDCP → F1-U → GTP-U → External Network
           rx_sdu_notifier.on_new_sdu(std::move(ack_packet), target_qfi);
+          printf("Sent TCP ACK\n");
           periodic_stats.acks_generated++;
           
           // Update last ACK sent to avoid duplicate ACKs
-          flow_track.last_ack_sent = ack_num;
           flow_track.last_ack_timestamp_us = periodic_stats.last_check_timestamp_us;
           
           // Mark that we've acknowledged the received packets

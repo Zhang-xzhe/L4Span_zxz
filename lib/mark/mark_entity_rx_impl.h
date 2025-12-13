@@ -42,7 +42,6 @@ public:
       // for (unsigned int buffer_i = 0; buffer_i < (*pdu_it).size(); buffer_i++) {
       //   tmp_string << std::hex << std::setw(2) << static_cast<int>((*pdu_it).data()[buffer_i]);
       // }
-
       ip::five_tuple pkt_five_tuple;
       iphdr* ipv4_hdr = (iphdr*)malloc(sizeof(iphdr));
       memcpy(ipv4_hdr, (*pdu_it).data(), sizeof(iphdr));
@@ -94,7 +93,7 @@ public:
               
               flow_track.in_flight_packets.pop_front();
               flow_track.total_packets_acked++;
-              flow_track.last_ack_received = ack_num;
+              flow_track.last_ack_received = tcp_hdr->seq;
               flow_track.last_ack_timestamp_us = rx_ts_us;
               removed_count++;
             } else {
@@ -108,8 +107,15 @@ public:
                             removed_count, flow_track.get_packets_in_flight(), 
                             flow_track.get_avg_rtt_ms(), pkt_five_tuple);
           }
-        }
-        
+          if(first_ack < 1000){
+            first_ack++;
+          }
+          else{
+            printf("discard ACK %d\n", first_ack);
+            return;
+          }
+        } 
+      
         if (tcp_hdr->ack_seq > 0 && tcp_hdr->ack_seq < five_tuple_to_drb[pkt_five_tuple].ack_raw) {
           // The lowest ACK for ack raw + 1;
           five_tuple_to_drb[pkt_five_tuple].ack_raw = tcp_hdr->ack_seq - 1;
@@ -135,8 +141,8 @@ public:
         else{
           tcp_hdr->window = (uint32_t)RWND;
         }
-        printf("predicted_qdely %f, predicted_dequeue_rate %f\n", drb_flow_state[drb_id].predicted_qdely, drb_flow_state[drb_id].predicted_dequeue_rate);
-        printf("tcp_hdr window size %u\n, after RWND1 %f, RWND2 %f, RWND 3 %f, RWND%f\n,Min_RTT %f,Max_throughput %f\n", tcp_hdr->window, RWND1, RWND2, RWND3, RWND, Min_RTT, Max_throughput);
+        //printf("predicted_qdely %f, predicted_dequeue_rate %f\n", drb_flow_state[drb_id].predicted_qdely, drb_flow_state[drb_id].predicted_dequeue_rate);
+        //printf("tcp_hdr window size %u\n, after RWND1 %f, RWND2 %f, RWND 3 %f, RWND%f\n,Min_RTT %f,Max_throughput %f\n", tcp_hdr->window, RWND1, RWND2, RWND3, RWND, Min_RTT, Max_throughput);
         auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
         tcp_hdr->check = sum;
         ip::swap_tcphdr(tcp_hdr);
@@ -172,6 +178,7 @@ public:
         //drb_id = five_tuple_to_drb[pkt_five_tuple].drb_id;
       }
       pdu_it ++;
+      
     }
     
     // logger.log_debug("IP packet bytes {}", tmp_string.str());
@@ -186,6 +193,7 @@ private:
   double Alpha = 200;
   double Min_RTT = 100000000;
   double Max_throughput = 0.01;
+  int first_ack = 0;
 
 public:
   mark_rx_sdu_notifier&   sdu_notifier;  // Made public for periodic timer access
