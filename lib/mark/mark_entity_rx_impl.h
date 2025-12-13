@@ -108,21 +108,15 @@ public:
         // Update the maximum throughput
         Max_throughput = std::max<double>(Max_throughput, drb_flow_state[drb_id].predicted_dequeue_rate);
         // Update the RWND
-        double RWND1 = (1-gamma) * RWND;
-        double RWND2 = gamma * (Min_RTT / drb_flow_state[drb_id].predicted_qdely) * RWND;
-        double RWND3 = gamma*Alpha * (1 - drb_flow_state[drb_id].predicted_dequeue_rate / Max_throughput);
-        if(RWND1<1000&&RWND2<1000&&RWND3<1000){
-          RWND =  RWND1 + RWND2 + RWND3;
-        }
-        
-        if((uint32_t)RWND < 0.2) {
-          tcp_hdr->window = 1; // Minimum RWND
+        RWND = (1-gamma) * RWND + gamma * (RWND*Min_RTT/drb_flow_state[drb_id].predicted_qdely + Alpha*(1-drb_flow_state[drb_id].predicted_dequeue_rate/Max_troughput));
+        if((uint32_t)RWND < 20) {
+          tcp_hdr->window = 20; // Minimum RWND
+          //printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
         }
         else{
           tcp_hdr->window = (uint32_t)RWND;
         }
-        printf("predicted_qdely %f, predicted_dequeue_rate %f\n", drb_flow_state[drb_id].predicted_qdely, drb_flow_state[drb_id].predicted_dequeue_rate);
-        printf("tcp_hdr window size %u\n, after RWND1 %f, RWND2 %f, RWND 3 %f, RWND%f\n,Min_RTT %f,Max_throughput %f\n", tcp_hdr->window, RWND1, RWND2, RWND3, RWND, Min_RTT, Max_throughput);
+        //printf("tcp_hdr window size %u\n, after %u\n,Min_RTT %u,Max_throughput %u\n", tcp_hdr->window, (uint32_t)RWND, (uint32_t)Min_RTT, (uint32_t)Max_troughput);
         auto sum = ip::compute_tcp_checksum(ipv4_hdr, tcp_hdr, (*pdu_it).data());
         tcp_hdr->check = sum;
         ip::swap_tcphdr(tcp_hdr);

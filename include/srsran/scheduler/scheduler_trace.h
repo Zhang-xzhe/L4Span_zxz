@@ -88,7 +88,7 @@ private:
   std::vector<dl_scheduler_trace_sample> trace_samples_;
   std::unordered_map<unsigned, size_t> slot_to_index_; ///< Map slot index to trace sample index
   bool enabled_ = true;
-  size_t current_index_ = 0; ///< For sequential access
+  mutable size_t current_index_ = 0; ///< For sequential access (mutable to allow updates in const methods)
   unsigned start_slot_ = 1000; ///< Minimum slot number before trace takes effect (default: 1000)
 };
 

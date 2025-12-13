@@ -57,6 +57,9 @@ public:
 
   alloc_result allocate_ul_grant(const ue_pusch_grant& grant, ran_slice_id_t slice_id, slot_point pusch_slot);
 
+  /// Get access to the trace manager for trace-based scheduling
+  dl_scheduler_trace_manager* get_trace_manager() const { return trace_mgr; }
+
 private:
   struct cell_t {
     du_cell_index_t           cell_index;
@@ -115,10 +118,10 @@ public:
     return result;
   }
 
-  // Provide access to trace manager for policy schedulers
+  /// Get access to the trace manager for trace-based scheduling
   dl_scheduler_trace_manager* get_trace_manager() const
   {
-    return pdsch_alloc.trace_mgr;
+    return pdsch_alloc.get_trace_manager();
   }
 
 private:
